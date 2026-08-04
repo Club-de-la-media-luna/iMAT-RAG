@@ -5,6 +5,8 @@ from __future__ import annotations
 import typer
 
 from imat_rag import config
+from imat_rag.index.search import build as build_index
+from imat_rag.index.search import search as run_search
 from imat_rag.ingest.catalogue import SourceTier, collect
 from imat_rag.ingest.extract import ExtractConfig, describe, extract_book
 from imat_rag.ingest.store import (
@@ -180,6 +182,46 @@ def status() -> None:
     )
     for book in [b for b in extracted if b.warnings]:
         typer.echo(f"  ! {book.slug[:50]:<50} {'; '.join(book.warnings)}")
+
+
+@app.command()
+def index() -> None:
+    """Embed every child chunk and build the searchable index."""
+    resolved = _resolve()
+
+    def report(done: int, total: int) -> None:
+        typer.echo(f"  embedded {done}/{total}", nl=False)
+        typer.echo("\r", nl=False)
+
+    typer.echo("loading BGE-M3 (first run downloads ~2.2 GB)...")
+    children, parents = build_index(resolved, progress=report)
+    typer.echo(f"\nindexed {children} children and {parents} parent sections")
+    typer.echo(f"index at {resolved.index}")
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="What to look for"),
+    limit: int = typer.Option(5, "--limit", "-k", help="How many passages"),
+    course: str = typer.Option("", "--course", "-c", help="Scope to one course"),
+    expand: bool = typer.Option(True, help="Return whole sections, not fragments"),
+    full: bool = typer.Option(False, help="Print the whole passage"),
+) -> None:
+    """Search the corpus. Retrieval only — no model writes the answer."""
+    resolved = _resolve()
+    hits = run_search(resolved, query, limit=limit, course=course, expand=expand)
+    if not hits:
+        scope = f" for course {course}" if course else ""
+        typer.secho(f"no material indexed{scope}", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    for position, hit in enumerate(hits, start=1):
+        typer.secho(f"\n[{position}] {hit.citation}", fg=typer.colors.CYAN)
+        typer.echo(
+            f"    {hit.book_slug} · {'/'.join(hit.courses)} · score {hit.score:.3f}"
+        )
+        body = hit.text if full else hit.text[:400].replace("\n", " ")
+        typer.echo(f"    {body}{'' if full else ' ...'}")
 
 
 if __name__ == "__main__":

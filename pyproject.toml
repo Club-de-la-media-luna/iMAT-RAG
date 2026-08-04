@@ -13,7 +13,9 @@ dependencies = [
 [project.optional-dependencies]
 # Stage dependencies are extras so that a group member who only queries the
 # index never installs the extraction and embedding stacks.
-index = ["lancedb>=0.13", "FlagEmbedding>=1.3"]
+# Dense embeddings only: LanceDB supplies the lexical half with BM25,
+# so BGE-M3's sparse output is unused and sentence-transformers suffices.
+index = ["lancedb>=0.13", "sentence-transformers>=3.0", "tantivy>=0.22"]
 
 [project.scripts]
 rag = "imat_rag.cli:app"
@@ -37,7 +39,9 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.mypy]
-python_version = "3.11"
+# Matches .python-version. Targeting 3.11 made mypy reject numpy's own stubs,
+# which use `type` statement syntax that only parses under 3.12+.
+python_version = "3.12"
 packages = ["imat_rag"]
 mypy_path = "src"
 strict = true
@@ -46,4 +50,10 @@ strict = true
 source-roots = ["src"]
 
 [tool.pylint."messages control"]
-disable = ["missing-module-docstring"]
+disable = [
+    "missing-module-docstring",
+    # Fires on pydantic models that share field names. A stored Chunk and a
+    # returned Hit are different types that legitimately declare the same
+    # citation fields; collapsing them would couple storage to the API.
+    "duplicate-code",
+]
