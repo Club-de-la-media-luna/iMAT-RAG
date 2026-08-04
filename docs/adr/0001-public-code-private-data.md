@@ -24,3 +24,13 @@ creates a new revision rather than overwriting a shared folder.
 *point at* HF revisions. Reproducing an index therefore requires two fetches
 (git for the manifest, HF for the artifacts), and the manifest is what binds
 them.
+
+The **index is as private as the PDFs**, not merely large. Embeddings can be
+inverted to recover approximations of their source text, so shipping a vector
+store built from copyrighted textbooks is a weaker form of shipping the
+textbooks — "no raw PDFs in the public repo" is not the same as "no content in
+the public repo". This is why `derived/` lives in `master_kb` alongside the
+sources rather than in this repository, and why the HF dataset repo is private
+rather than merely unlisted. (Argument taken from `master_kb`'s own
+`worktree-mighty-leaping-reef` README, which reasoned this out before the split
+happened.)
