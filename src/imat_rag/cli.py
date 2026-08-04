@@ -7,6 +7,14 @@ import typer
 from imat_rag import config
 from imat_rag.ingest.catalogue import SourceTier, collect
 from imat_rag.ingest.extract import ExtractConfig, describe, extract_book
+from imat_rag.ingest.store import (
+    ChunkConfig,
+    Manifest,
+    chunk_extracted_book,
+    extracted_books,
+    read_manifest,
+    write_manifest,
+)
 
 app = typer.Typer(
     help="Retrieval over the MIA master's reading list.",
@@ -49,6 +57,25 @@ def paths() -> None:
     for label, path in rows:
         mark = " " if path.exists() else "?"
         typer.echo(f"{mark} {label.ljust(width)}  {path}")
+
+
+@app.command()
+def courses() -> None:
+    """List the courses in the knowledge base."""
+
+    names = {
+        "DRL": "Deep Reinforcement Learning",
+        "EE": "Etica y explicabilidad",
+        "GI": "Geometría de la información",
+        "IAG": "Inteligencia artificial geométrica",
+        "IAP": "Inteligencia artificial probabilística",
+        "IM": "Ingeneria de modelos",
+        "MD": "Modelos diferenciales",
+        "MGP": "Modelos generativos profundos",
+        "MP": "Métodos probabilísticos",
+    }
+    for code, name in names.items():
+        typer.echo(f"{code:<4} --> {name}")
 
 
 @app.command()
@@ -114,6 +141,45 @@ def extract(
     typer.echo(f"\nextracted {done}, already current {skipped}, failed {failed}")
     if failed:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def chunk() -> None:
+    """Chunk every extracted book and refresh the manifest."""
+    resolved = _resolve()
+    extracted = extracted_books(resolved)
+    if not extracted:
+        typer.secho("nothing extracted yet; run `rag extract`", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    entries = []
+    for position, meta in enumerate(extracted, start=1):
+        entry = chunk_extracted_book(resolved, meta)
+        entries.append(entry)
+        typer.echo(
+            f"[{position}/{len(extracted)}] {entry.slug[:56]:<56} "
+            f"{entry.chunks:>6} chunks ({entry.parents} parents)"
+        )
+    manifest = Manifest(chunk_config=ChunkConfig(), books=entries)
+    write_manifest(resolved, manifest)
+    typer.echo(f"\n{manifest.total_chunks} chunks across {len(manifest.books)} books")
+
+
+@app.command()
+def status() -> None:
+    """Summarise what has been extracted and chunked so far."""
+    resolved = _resolve()
+    extracted = extracted_books(resolved)
+    manifest = read_manifest(resolved)
+    pages = sum(b.pages for b in extracted)
+    scans = sum(1 for b in extracted if b.extraction_tier == "scan")
+
+    typer.echo(f"extracted : {len(extracted)} books, {pages} pages, {scans} from scans")
+    typer.echo(
+        f"chunked   : {manifest.total_chunks} chunks across {len(manifest.books)} books"
+    )
+    for book in [b for b in extracted if b.warnings]:
+        typer.echo(f"  ! {book.slug[:50]:<50} {'; '.join(book.warnings)}")
 
 
 if __name__ == "__main__":
