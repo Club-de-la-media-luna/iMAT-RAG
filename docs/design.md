@@ -19,7 +19,7 @@ master_kb/courses/<CODE>/raw/literature/*.pdf   (601 MB, 21 basic books)
    │ CHUNK     parent/child          │  split on headings, never mid-equation
    │           breadcrumb-prefixed   │  child ~350 tok → parent ~2000 tok
    └────────────────┬────────────────┘
-                    │  ~20k children / ~3k parents
+                    │  28,146 children / 10,890 parents (measured)
    ┌────────────────▼────────────────┐
    │ EMBED     BGE-M3, local, GPU    │  1024-dim dense + lexical sparse
    └────────────────┬────────────────┘
@@ -110,8 +110,8 @@ context, `coverage()` so the host agent knows what is not indexed.
 | M0 | Rescue the corpus out of the `guide-md-ingest` worktree; commit outstanding ledgers |
 | M1 | Repo scaffold — uv, Makefile, `src/imat_rag/`, `tests/` |
 | ~~M2~~ | ~~Extraction benchmark~~ — **done**: mineru wins, ≈12 h for the basic tier ([results](./m2-extraction-benchmark.md)) |
-| M3 | Extract all 21 basic books |
-| M4 | Chunk stage, with determinism tests |
+| ~~M3~~ | ~~Extract all 21 basic books~~ — **done**: 21/21, 0 failures, ~29.9M chars, full page coverage, both scans recovered |
+| ~~M4~~ | ~~Chunk stage~~ — **done**: 39,036 chunks (10,890 parents / 28,146 children), 0 duplicate ids, 0 orphans |
 | M5 | Embed and index |
 | M6 | `rag search` CLI + coverage report |
 | M7 | MCP server |
