@@ -367,10 +367,22 @@ def run(
         typer.echo(f"\n{tool} / {sample.name}: {' '.join(argv)}")
 
         started = time.monotonic()
+        timed_out = False
+        stderr = ""
+        returncode = 0
         with VramPoller() as vram:
-            proc = subprocess.run(
-                argv, capture_output=True, text=True, timeout=timeout, check=False
-            )
+            try:
+                proc = subprocess.run(
+                    argv, capture_output=True, text=True, timeout=timeout, check=False
+                )
+                returncode = proc.returncode
+                stderr = proc.stderr
+            except subprocess.TimeoutExpired as expired:
+                # A timeout is a result, not a crash. Record it and move to the
+                # next slice, or one slow tool discards the whole run.
+                timed_out = True
+                returncode = -1
+                stderr = f"timed out after {timeout}s\n{expired.stderr or ''}"
         elapsed = time.monotonic() - started
 
         markdown = newest_markdown(out_dir)
@@ -379,8 +391,9 @@ def run(
             "sample": sample.name,
             "tier": sample.tier,
             "pages": sample.last_page - sample.first_page + 1,
-            "ok": proc.returncode == 0 and bool(markdown),
-            "returncode": proc.returncode,
+            "ok": returncode == 0 and bool(markdown),
+            "timed_out": timed_out,
+            "returncode": returncode,
             "seconds": round(elapsed, 1),
             "seconds_per_page": round(
                 elapsed / (sample.last_page - sample.first_page + 1), 2
@@ -389,13 +402,17 @@ def run(
             "argv": argv,
             **score(markdown, out_dir),
         }
-        if proc.returncode != 0:
-            record["stderr_tail"] = proc.stderr[-2000:]
+        if returncode != 0:
+            record["stderr_tail"] = stderr[-2000:]
 
         (results_dir / f"{tool}__{sample.name}.json").write_text(
             json.dumps(record, indent=2, ensure_ascii=False)
         )
-        status = "ok" if record["ok"] else f"FAILED rc={proc.returncode}"
+        status = (
+            "ok"
+            if record["ok"]
+            else ("TIMEOUT" if timed_out else f"FAILED rc={returncode}")
+        )
         typer.echo(
             f"  {status}  {record['seconds']}s  {record['peak_vram_mb']}MB  "
             f"{record['chars']} chars  {record['display_math']} display-math  "
