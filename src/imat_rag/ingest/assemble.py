@@ -10,7 +10,8 @@ all.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -89,10 +90,12 @@ class Outline:
         return bool(self._entries)
 
     def depth_of(self, title: str) -> int | None:
+        """The outline's depth for a heading, or None if it does not know it."""
         entry = self._by_title.get(title.strip().lower())
         return entry.depth if entry else None
 
     def starting_on(self, page: int) -> list[OutlineEntry]:
+        """Outline entries the source places on this page."""
         return [entry for entry in self._entries if entry.page == page]
 
 
