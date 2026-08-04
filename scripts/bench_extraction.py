@@ -228,6 +228,12 @@ TOOLS: dict[str, list[str]] = {
         "--image-export-mode",
         "referenced",
     ],
+    # marker 2.0 rebuilt extraction around a VLM and needs an inference server:
+    # surya autodetects an NVIDIA GPU, selects the vllm backend, and spawns it
+    # via `docker run`. Kept here to document that it does not run on this
+    # machine — Docker Desktop's WSL integration is off, and vLLM would not fit
+    # in 4 GB regardless. The llamacpp fallback needs a llama-server binary and
+    # a GGUF download.
     "marker": [
         "uvx",
         "--from",
@@ -240,10 +246,37 @@ TOOLS: dict[str, list[str]] = {
         "markdown",
         "--paginate_output",
     ],
+    # marker 1.x predates that change: dedicated layout, OCR and equation
+    # models under plain torch, no server, no Docker. The version that can
+    # actually run on 4 GB.
+    "marker1": [
+        "uvx",
+        "--from",
+        "marker-pdf==1.10.2",
+        "marker_single",
+        "{pdf}",
+        "--output_dir",
+        "{out}",
+        "--output_format",
+        "markdown",
+        "--paginate_output",
+    ],
+    # Two packaging problems, both upstream:
+    #   1. The base distribution ships without torch; the `pipeline` extra
+    #      carries torch and torchvision.
+    #   2. Even with it, mineru 3.4.4's vendored pytorchocr imports `six`
+    #      without declaring it. An AST scan of the package confirms `six` is
+    #      the only genuinely undeclared dependency — every other unresolved
+    #      import (boto3, gradio, vllm, lmdeploy, mlx_vlm, flash_attn,
+    #      torch_npu) belongs to an optional backend that is guarded.
+    # Both surface as a task failure from mineru's own local API service rather
+    # than as an install error, which makes them slow to diagnose.
     "mineru": [
         "uvx",
         "--from",
-        "mineru",
+        "mineru[pipeline]",
+        "--with",
+        "six",
         "mineru",
         "-p",
         "{pdf}",
