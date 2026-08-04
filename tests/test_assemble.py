@@ -5,6 +5,7 @@ from imat_rag.ingest.assemble import (
     OutlineEntry,
     assemble,
     heading_depth,
+    html_table_to_markdown,
     is_margin_note,
     page_span,
     parse_blocks,
@@ -240,3 +241,88 @@ def test_injection_only_happens_on_the_outlines_own_page() -> None:
     records = [{"type": "text", "text": "Body.", "page_idx": 0}]
 
     assert "Later Chapter" not in assemble(parse_blocks(records), outline=outline)
+
+
+# --- tables (carried in table_body, not text) -------------------------------
+
+
+SIMPLE_TABLE = (
+    "<table><tr><td>User ID</td><td>Gender</td></tr>"
+    "<tr><td>2</td><td>F</td></tr></table>"
+)
+
+
+def test_a_table_block_is_rendered_not_dropped() -> None:
+    """table blocks have no `text` at all, so falling through loses them."""
+    blocks = parse_blocks(
+        [{"type": "table", "table_body": SIMPLE_TABLE, "page_idx": 0}]
+    )
+
+    out = assemble(blocks)
+
+    assert "| User ID | Gender |" in out
+    assert "| 2 | F |" in out
+
+
+def test_a_table_keeps_its_caption() -> None:
+    blocks = parse_blocks(
+        [
+            {
+                "type": "table",
+                "table_body": SIMPLE_TABLE,
+                "table_caption": ["Table 3: Users"],
+                "page_idx": 0,
+            }
+        ]
+    )
+
+    out = assemble(blocks)
+
+    assert "Table 3: Users" in out
+
+
+def test_merged_cells_stay_as_html_rather_than_being_mangled() -> None:
+    merged = '<table><tr><td colspan="2">Wide</td></tr></table>'
+
+    assert html_table_to_markdown(merged) == merged
+
+
+def test_single_span_attributes_still_convert() -> None:
+    """mineru writes rowspan=1 colspan=1 on ordinary cells."""
+    html = (
+        '<table><tr><td rowspan="1" colspan="1">A</td>'
+        '<td rowspan="1" colspan="1">B</td></tr></table>'
+    )
+
+    assert html_table_to_markdown(html) == "| A | B |\n|---|---|"
+
+
+def test_ragged_rows_are_padded() -> None:
+    html = "<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>"
+
+    assert html_table_to_markdown(html).splitlines()[-1] == "| c |  |"
+
+
+def test_unparseable_table_html_is_passed_through() -> None:
+    assert html_table_to_markdown("not a table") == "not a table"
+
+
+# --- which blocks own an image ----------------------------------------------
+
+
+def test_only_images_and_charts_count_as_figures() -> None:
+    blocks = parse_blocks(
+        [
+            {"type": "image", "img_path": "a.jpg", "page_idx": 0},
+            {"type": "chart", "img_path": "b.jpg", "page_idx": 0},
+            {"type": "equation", "img_path": "c.jpg", "text": "$$x$$", "page_idx": 0},
+            {
+                "type": "table",
+                "img_path": "d.jpg",
+                "table_body": "<table></table>",
+                "page_idx": 0,
+            },
+        ]
+    )
+
+    assert [b.is_figure for b in blocks] == [True, True, False, False]

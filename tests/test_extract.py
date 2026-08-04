@@ -9,6 +9,8 @@ from imat_rag.ingest.catalogue import Book, SourceTier
 from imat_rag.ingest.extract import (
     ExtractConfig,
     already_done,
+    blocks_dir,
+    cached_blocks,
     copy_figures,
     find_output,
     mineru_argv,
@@ -202,3 +204,49 @@ def test_page_numbers_are_zero_padded_so_names_sort(tmp_path: Path) -> None:
     names = copy_figures(tmp_path / "src", tmp_path / "out", blocks, ExtractConfig())
 
     assert sorted(names.values()) == ["p0009-fig1.jpg", "p0100-fig1.jpg"]
+
+
+# --- caching mineru's own output --------------------------------------------
+
+
+def test_cached_blocks_are_reused_when_the_key_matches(tmp_path: Path) -> None:
+    """Assembly must never force a book back through the GPU."""
+    paths = make_kb(tmp_path)
+    directory = blocks_dir(paths, "murphy-vol-1")
+    (directory).mkdir(parents=True)
+    (directory / "content_list.json").write_text("[]")
+    (directory / "stage_key").write_text("abc123")
+
+    assert cached_blocks(paths, a_book(), "abc123") == directory / "content_list.json"
+
+
+def test_cached_blocks_are_rejected_when_the_key_differs(tmp_path: Path) -> None:
+    paths = make_kb(tmp_path)
+    directory = blocks_dir(paths, "murphy-vol-1")
+    directory.mkdir(parents=True)
+    (directory / "content_list.json").write_text("[]")
+    (directory / "stage_key").write_text("old")
+
+    assert cached_blocks(paths, a_book(), "new") is None
+
+
+def test_a_content_list_with_no_stamp_is_not_trusted(tmp_path: Path) -> None:
+    """An interrupted run can leave the file without its key."""
+    paths = make_kb(tmp_path)
+    directory = blocks_dir(paths, "murphy-vol-1")
+    directory.mkdir(parents=True)
+    (directory / "content_list.json").write_text("[]")
+
+    assert cached_blocks(paths, a_book(), "abc123") is None
+
+
+def test_figures_resolve_against_the_cached_images_directory(tmp_path: Path) -> None:
+    """Cached blocks flatten mineru's images/ layout; lookup must follow."""
+    cache = tmp_path / "blocks"
+    (cache / "images").mkdir(parents=True)
+    (cache / "images" / "a.jpg").write_bytes(b"x" * 5000)
+    blocks = [Block(type="image", page=3, img_path="images/a.jpg")]
+
+    names = copy_figures(cache, tmp_path / "out", blocks, ExtractConfig())
+
+    assert names == {"images/a.jpg": "p0003-fig1.jpg"}

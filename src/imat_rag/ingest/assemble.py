@@ -45,6 +45,21 @@ NUMBERING = re.compile(r"^\s*(?P<number>\d+(?:\.\d+)*)\.?\s+\S")
 MAX_HEADING_DEPTH = 6
 
 
+FIGURE_TYPES = frozenset({"image", "chart"})
+"""Block types whose `img_path` is worth keeping as a file.
+
+`equation` and `table` blocks carry an `img_path` too — a picture of the
+equation or table — but their content is already available as LaTeX and HTML
+respectively. Copying those images duplicates content we can already read and
+would add 305 files for a single 50-page scanned sample.
+"""
+
+CELL = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.DOTALL | re.IGNORECASE)
+ROW = re.compile(r"<tr[^>]*>(.*?)</tr>", re.DOTALL | re.IGNORECASE)
+TAG = re.compile(r"<[^>]+>")
+SPANNING = re.compile(r'(?:rowspan|colspan)\s*=\s*"?([2-9]|\d{2,})', re.IGNORECASE)
+
+
 class Block(BaseModel, frozen=True):
     """One record from `content_list.json`, normalised."""
 
@@ -54,11 +69,42 @@ class Block(BaseModel, frozen=True):
     text_level: int | None = None
     img_path: str = ""
     caption: str = ""
+    table_body: str = ""
 
     @property
     def is_heading(self) -> bool:
         """Whether mineru marked this block as a heading."""
         return self.text_level is not None
+
+    @property
+    def is_figure(self) -> bool:
+        """Whether this block's image is content in its own right."""
+        return self.type in FIGURE_TYPES and bool(self.img_path)
+
+
+def html_table_to_markdown(html: str) -> str:
+    """Convert mineru's HTML table to a Markdown pipe table.
+
+    Tables with merged cells cannot be represented as a pipe table, so those
+    are left as HTML — Markdown passes it through, and mangling the structure
+    would be worse than keeping tags.
+    """
+    if SPANNING.search(html):
+        return html.strip()
+
+    rows = [
+        [TAG.sub("", cell).strip() for cell in CELL.findall(row)]
+        for row in ROW.findall(html)
+    ]
+    rows = [row for row in rows if row]
+    if not rows:
+        return html.strip()
+
+    width = max(len(row) for row in rows)
+    padded = [row + [""] * (width - len(row)) for row in rows]
+    lines = ["| " + " | ".join(padded[0]) + " |", "|" + "---|" * width]
+    lines += ["| " + " | ".join(row) + " |" for row in padded[1:]]
+    return "\n".join(lines)
 
 
 class OutlineEntry(BaseModel, frozen=True):
@@ -120,8 +166,11 @@ def parse_blocks(records: Iterable[dict[str, Any]]) -> list[Block]:
                 text_level=int(level) if level not in (None, "") else None,
                 img_path=str(record.get("img_path", "") or ""),
                 caption=_as_caption(
-                    record.get("image_caption") or record.get("chart_caption")
+                    record.get("image_caption")
+                    or record.get("chart_caption")
+                    or record.get("table_caption")
                 ),
+                table_body=str(record.get("table_body", "") or ""),
             )
         )
     return blocks
@@ -154,20 +203,33 @@ def _heading(text: str, outline: Outline | None) -> str:
     return f"{'#' * depth} {text.strip()}"
 
 
+def _render_figure(block: Block, figures: dict[str, str]) -> str:
+    name = figures.get(block.img_path, block.img_path)
+    return f"![{block.caption}]({name})" if name else ""
+
+
+def _render_table(block: Block) -> str:
+    """A table block holds HTML in `table_body` and no `text` at all."""
+    table = html_table_to_markdown(block.table_body)
+    if not table:
+        return ""
+    return f"{block.caption}\n\n{table}" if block.caption else table
+
+
+def _render_text(block: Block, outline: Outline | None) -> str:
+    text = block.text.strip()
+    if not text or block.type == "equation":
+        return text
+    return _heading(text, outline) if block.is_heading else text
+
+
 def _render(block: Block, outline: Outline | None, figures: dict[str, str]) -> str:
     """Render one block, or the empty string if it carries nothing."""
-    if block.type in {"image", "chart"}:
-        name = figures.get(block.img_path, block.img_path)
-        return f"![{block.caption}]({name})" if name else ""
-
-    text = block.text.strip()
-    if not text:
-        return ""
-    if block.type == "equation":
-        return text
-    if block.is_heading:
-        return _heading(text, outline)
-    return text
+    if block.type in FIGURE_TYPES:
+        return _render_figure(block, figures)
+    if block.type == "table":
+        return _render_table(block)
+    return _render_text(block, outline)
 
 
 def assemble(

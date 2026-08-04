@@ -167,9 +167,14 @@ def copy_figures(
     per_page: dict[int, int] = {}
 
     for block in blocks:
-        if not block.img_path or block.img_path in names:
+        # Equation and table blocks carry an img_path too, but their content is
+        # already LaTeX and HTML. Copying those pictures duplicated content and
+        # produced three images for every one worth keeping.
+        if not block.is_figure or block.img_path in names:
             continue
         origin = source_dir / block.img_path
+        if not origin.is_file():
+            origin = source_dir / "images" / Path(block.img_path).name
         if not origin.is_file() or origin.stat().st_size < config.min_figure_bytes:
             continue
         index = per_page.get(block.page, 0) + 1
@@ -181,6 +186,27 @@ def copy_figures(
     return names
 
 
+def blocks_dir(paths: Paths, slug: str) -> Path:
+    """Where mineru's own output is cached for a book."""
+    return paths.derived / "blocks" / slug
+
+
+def cached_blocks(paths: Paths, book: Book, key: str) -> Path | None:
+    """The cached content list for this exact book and configuration, if any.
+
+    Caching mineru's output rather than only the Markdown is what makes the
+    stage genuinely cheap to iterate on: assembly is milliseconds, extraction
+    is minutes to hours. A change to how Markdown is assembled must not force
+    a book back through the GPU.
+    """
+    directory = blocks_dir(paths, book.slug)
+    content_list = directory / "content_list.json"
+    stamp = directory / "stage_key"
+    if not (content_list.is_file() and stamp.is_file()):
+        return None
+    return content_list if stamp.read_text().strip() == key else None
+
+
 def already_done(paths: Paths, book: Book, key: str) -> bool:
     """Whether this exact book and configuration has been extracted before."""
     meta_path = paths.extracted / f"{book.slug}.meta.json"
@@ -190,6 +216,46 @@ def already_done(paths: Paths, book: Book, key: str) -> bool:
         return bool(json.loads(meta_path.read_text()).get("stage_key") == key)
     except (json.JSONDecodeError, OSError):
         return False
+
+
+def run_mineru(
+    paths: Paths, book: Book, key: str, config: ExtractConfig, timeout: int
+) -> Path:
+    """Produce and cache mineru's content list plus the figures it references."""
+    if (cached := cached_blocks(paths, book, key)) is not None:
+        return cached
+
+    work_dir = paths.derived / "work" / book.slug
+    shutil.rmtree(work_dir, ignore_errors=True)
+    work_dir.mkdir(parents=True)
+    try:
+        subprocess.run(
+            mineru_argv(book.path, work_dir, config),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        produced = find_output(work_dir, book.slug)
+        if produced is None:
+            raise FileNotFoundError(f"mineru produced no content list for {book.slug}")
+
+        target = blocks_dir(paths, book.slug)
+        shutil.rmtree(target, ignore_errors=True)
+        (target / "images").mkdir(parents=True)
+        shutil.copy2(produced, target / "content_list.json")
+
+        blocks = parse_blocks(json.loads(produced.read_text(encoding="utf-8")))
+        for block in blocks:
+            # Only figures are kept. Equation and table images are pictures of
+            # content we already hold as LaTeX and HTML.
+            origin = produced.parent / block.img_path
+            if block.is_figure and origin.is_file():
+                shutil.copy2(origin, target / "images" / Path(block.img_path).name)
+        (target / "stage_key").write_text(key)
+        return target / "content_list.json"
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def extract_book(
@@ -205,23 +271,7 @@ def extract_book(
     if already_done(paths, described, key):
         return None
 
-    work_dir = paths.derived / "work" / described.slug
-    if work_dir.exists():
-        shutil.rmtree(work_dir)
-    work_dir.mkdir(parents=True)
-
-    subprocess.run(
-        mineru_argv(described.path, work_dir, config),
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-
-    content_list = find_output(work_dir, described.slug)
-    if content_list is None:
-        raise FileNotFoundError(f"mineru produced no content list for {described.slug}")
-
+    content_list = run_mineru(paths, described, key, config, timeout)
     blocks = parse_blocks(json.loads(content_list.read_text(encoding="utf-8")))
     _, _, outline_entries, _ = probe(described.path)
 
@@ -255,5 +305,4 @@ def extract_book(
     (paths.extracted / f"{described.slug}.meta.json").write_text(
         meta.model_dump_json(indent=2), encoding="utf-8"
     )
-    shutil.rmtree(work_dir, ignore_errors=True)
     return meta
