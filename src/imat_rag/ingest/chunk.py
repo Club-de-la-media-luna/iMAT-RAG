@@ -19,6 +19,13 @@ from collections.abc import Iterator, Sequence
 from pydantic import BaseModel, Field
 
 PAGE_ANCHOR = re.compile(r"<!--page:(\d+)-->")
+INLINE_SCRIPT = re.compile(r"</?su[bp]>", re.IGNORECASE)
+"""mineru sprinkles <sub>/<sup> inside ordinary words.
+
+It renders "diagonalising" as "di<sub>agona</sub>li<sub>s</sub>i<sub>ng</sub>",
+which breaks the word for both a reader and a tokenizer. Real subscripts in this
+corpus live inside LaTeX, so unwrapping these tags loses nothing.
+"""
 HEADING = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
 
 CHARS_PER_TOKEN = 4
@@ -77,14 +84,25 @@ class Chunk(BaseModel, frozen=True):
         return f"{self.breadcrumb}\n\n{self.text}" if self.breadcrumb else self.text
 
 
-def chunk_id(book_slug: str, page_start: int, page_end: int, text: str) -> str:
+def chunk_id(
+    book_slug: str,
+    page_start: int,
+    page_end: int,
+    text: str,
+    is_parent: bool = False,
+) -> str:
     """Content-addressed identifier.
 
     Derived from content alone, never from insertion order, so two people
     ingesting the same material independently produce identical ids and the
     union of their work is the correct result with no deduplication pass.
+
+    The tier is part of the address because a section short enough to yield a
+    single child gives that child the same text and pages as its parent. Without
+    this they collide, and a child would end up pointing at itself.
     """
-    payload = f"{book_slug}:{page_start}-{page_end}:{text}".encode()
+    tier = "parent" if is_parent else "child"
+    payload = f"{book_slug}:{tier}:{page_start}-{page_end}:{text}".encode()
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -101,7 +119,10 @@ def split_pieces(markdown: str) -> list[Piece]:
             block = PAGE_ANCHOR.sub("", block).strip()
             if not block:
                 continue
-        pieces.append(Piece(text=block, page=page, atomic=_is_atomic(block)))
+        atomic = _is_atomic(block)
+        if not atomic:
+            block = INLINE_SCRIPT.sub("", block)
+        pieces.append(Piece(text=block, page=page, atomic=atomic))
     return pieces
 
 
@@ -118,10 +139,12 @@ class Section(BaseModel, frozen=True):
 
     @property
     def text(self) -> str:
+        """The section's content, pieces rejoined."""
         return "\n\n".join(piece.text for piece in self.pieces)
 
     @property
     def pages(self) -> tuple[int, int]:
+        """First and last source page this section covers."""
         pages = [piece.page for piece in self.pieces]
         return (min(pages), max(pages)) if pages else (0, 0)
 
@@ -207,7 +230,7 @@ def _make_chunk(
     pages = [piece.page for piece in pieces]
     start, end = (min(pages), max(pages)) if pages else (0, 0)
     return Chunk(
-        chunk_id=chunk_id(book_slug, start, end, text),
+        chunk_id=chunk_id(book_slug, start, end, text, is_parent),
         book_slug=book_slug,
         breadcrumb=breadcrumb,
         text=text,

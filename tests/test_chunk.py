@@ -199,3 +199,35 @@ def test_a_section_shorter_than_the_budget_yields_one_parent_and_one_child() -> 
 
     assert sum(1 for c in chunks if c.is_parent) == 1
     assert sum(1 for c in chunks if not c.is_parent) == 1
+
+
+def test_a_parent_and_its_only_child_do_not_collide() -> None:
+    """A short section gives both the same text and pages."""
+    chunks = chunk_section(split_sections("# S\n\nshort\n", "Book")[0], "b")
+
+    assert len({c.chunk_id for c in chunks}) == len(chunks)
+
+
+def test_every_chunk_id_in_a_book_is_unique() -> None:
+    chunks = chunk_book(MARKDOWN, "bishop", "Bishop PRML")
+
+    assert len({c.chunk_id for c in chunks}) == len(chunks)
+
+
+def test_no_child_points_at_itself() -> None:
+    chunks = chunk_book(MARKDOWN, "bishop", "Bishop PRML")
+
+    assert all(c.parent_id != c.chunk_id for c in chunks)
+
+
+def test_stray_inline_sub_tags_are_unwrapped() -> None:
+    """mineru renders 'diagonalising' as di<sub>agona</sub>li<sub>s</sub>ing."""
+    pieces = split_pieces("The di<sub>agona</sub>li<sub>s</sub>ing matrix.")
+
+    assert pieces[0].text == "The diagonalising matrix."
+
+
+def test_atomic_blocks_keep_their_markup() -> None:
+    html = "<table><tr><td>a<sub>1</sub></td></tr></table>"
+
+    assert split_pieces(html)[0].text == html
