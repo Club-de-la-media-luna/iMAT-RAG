@@ -10,7 +10,7 @@ not generate.
 ### Corpus
 
 **Course**:
-One of the ten MIA subjects, identified by its code (`DRL`, `GI`, `IAP`, `IM`,
+One of the nine MIA subjects, identified by its code (`DRL`, `GI`, `IAP`, `IM`,
 `MD`, `MGP`, `MP`, `IAG`, `EE`). Never referred to by its Spanish title in code.
 _Avoid_: subject, asignatura, module
 

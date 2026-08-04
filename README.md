@@ -17,6 +17,20 @@ Hugging Face Hub dataset repository.
 - [docs/design.md](./docs/design.md) — architecture, corpus, stages, build order.
 - [docs/adr/](./docs/adr/) — decisions and the alternatives that were rejected.
 
+## Getting started
+
+```sh
+make install          # uv sync
+make test             # pytest
+make lint             # isort, black, mypy, flake8, ruff, complexipy, pylint
+uv run rag paths      # show the resolved knowledge base and artifact locations
+```
+
+The knowledge base is found at runtime: `MASTER_KB_PATH` if set (authoritative
+— a wrong value is an error, not a reason to look elsewhere), otherwise the
+nearest `master_kb` directory at or above the working directory.
+
 ## Status
 
-Pre-implementation. Design settled; see the build order in `docs/design.md`.
+M1 done — scaffold, config resolution, CLI skeleton. Next is M2, the extraction
+benchmark. See the build order in [docs/design.md](./docs/design.md).

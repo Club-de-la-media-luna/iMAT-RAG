@@ -1,0 +1,12 @@
+# This repository holds code only. Data lives in master_kb.
+.venv/
+__pycache__/
+*.py[co]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.complexipy_cache/
+.coverage
+dist/
+build/
+*.egg-info/
