@@ -118,10 +118,12 @@ class Book(BaseModel, frozen=True):
 
     @property
     def is_scan(self) -> bool:
+        """Whether the source has no text layer and depends entirely on OCR."""
         return self.extraction_tier == "scan"
 
 
 def sha256_of(path: Path, chunk: int = 1 << 20) -> str:
+    """Hash a file's contents, streaming so a 144 MB PDF stays out of memory."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while block := handle.read(chunk):
