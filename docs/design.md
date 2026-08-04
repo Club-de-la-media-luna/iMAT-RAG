@@ -10,7 +10,7 @@ the thing and the order it gets built in.
 master_kb/courses/<CODE>/raw/literature/*.pdf   (601 MB, 21 basic books)
                     │
    ┌────────────────▼────────────────┐
-   │ EXTRACT   tiered, resumable     │  prose→PyMuPDF · maths+scan→mineru
+   │ EXTRACT   one path, resumable   │  mineru for every book (ADR-0006)
    │           content-addressed     │  reads content_list.json, not .md
    └────────────────┬────────────────┘
         <slug>.md (LaTeX, page anchors) + <slug>.meta.json + figures/*.png
@@ -36,11 +36,13 @@ master_kb/courses/<CODE>/raw/literature/*.pdf   (601 MB, 21 basic books)
 
 21 basic-tier books, 11,990 pages, 601 MB, routed by extraction tier:
 
-| Extraction tier | Pages | Books | Tool |
-| --- | ---: | ---: | --- |
-| maths (born-digital) | 9,577 | 14 | mineru `-b pipeline` — decided by M2 |
-| prose | 1,434 | 5 | PyMuPDF |
-| scan (OCR) | 979 | 2 | mineru, same path (`-m auto` selects OCR) |
+| Extraction tier | Pages | Books |
+| --- | ---: | ---: |
+| born-digital | 11,011 | 19 |
+| scan (OCR) | 979 | 2 |
+
+The tier is descriptive only. Every book goes through mineru `-b pipeline`
+with `-m auto`; see [ADR-0006](./adr/0006-single-extraction-path.md).
 
 Coverage per Course, which is uneven by nature and is why `coverage()` exists:
 
@@ -61,7 +63,7 @@ tagged `courses: [IAP, MGP]`.
 
 ## Stages
 
-**Extract.** Route each Book by extraction tier. mineru emits typed,
+**Extract.** mineru emits typed,
 page-stamped blocks in `content_list.json`; the Markdown is assembled from those
 rather than read from any tool's `.md` output — see
 [ADR-0005](./adr/0005-mineru-content-list-as-extraction-source.md). `aside_text`,
@@ -87,7 +89,7 @@ and `9.1.1` are indistinguishable and chapter titles are missed. Depth is
 reconstructed from the PDF outline where one exists (27 of 41 books) and from the
 numbering in the heading text otherwise.
 
-**Embed.** BGE-M3, local, fp16. ~20k children is minutes on a 4 GB GPU.
+**Embed.** BGE-M3, local, fp16. 28,146 children, measured.
 Cross-lingual by construction — a Spanish query against an English book needs
 no translation step.
 
@@ -137,13 +139,10 @@ question becomes live, because that decision is not settleable by spot-checking.
 - ~~Marker and MinerU on 4 GB of VRAM is tight.~~ Measured in M2: mineru peaks at
   1.6–1.8 GB, comfortable. marker 1.10.2 peaks at 3951 MB of 4096 and thrashes,
   which is why it was rejected.
-- Figure volume is measured, not guessed, and the earlier 100–300 MB estimate was
-  about right: **≈ 400 MB** over the basic tier (0.034 MB/page maths, 0.050 scan,
-  0.018 prose). The bytes are fine. The **file count** is the awkward part —
-  mineru extracts every figure region, 116 from 38 pages of Bishop and 305 from
-  50 scanned pages of Evans, so the basic tier lands somewhere near 40,000 small
-  files. Worth a minimum-area filter to drop decorative fragments, but it is not
-  a blocker.
+- ~~Figure volume~~ Resolved. The earlier 40,000-file estimate assumed every
+  `img_path` was a figure; most were pictures of equations, which are no longer
+  copied. Actual: **5122 files, 138 MB** over the basic tier. No filter needed
+  beyond the existing minimum-size check.
 - Two ledger entries are marked acquired but are truncated front-matter PDFs
   (Whittle, 6 pages; Higham & Kloeden, 4 pages). Both are complementary tier, so
   v1 does not touch them, but the fetch script validates nothing and the ledger
