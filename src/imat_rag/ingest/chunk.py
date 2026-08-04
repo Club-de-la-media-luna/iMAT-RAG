@@ -1,0 +1,241 @@
+"""Split extracted Markdown into the units that get embedded and returned.
+
+Two tiers. Child chunks are small and carry the embeddings, because a precise
+query should match a precise passage. Parent chunks are whole sections and are
+what actually comes back, because an answer about EM is useless if the
+derivation is cut in half.
+
+Every chunk is prefixed with its breadcrumb. Mathematical notation is defined
+once per chapter and used for forty pages, so a chunk that says "substituting
+(9.14) into (9.11) gives" means nothing without knowing it is Bishop chapter 9.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from collections.abc import Iterator, Sequence
+
+from pydantic import BaseModel, Field
+
+PAGE_ANCHOR = re.compile(r"<!--page:(\d+)-->")
+HEADING = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
+
+CHARS_PER_TOKEN = 4
+"""Rough conversion used for budgeting.
+
+The real tokenizer arrives with the embedding model. Chunk sizes are targets,
+not limits — BGE-M3 accepts 8192 tokens, so an estimate that is off by a third
+costs nothing, and avoiding the dependency keeps chunking testable in
+milliseconds.
+"""
+
+ATOMIC_PREFIXES = ("$$", "|", "![", "<table", "```")
+"""Blocks that lose their meaning if cut: equations, tables, figures, code."""
+
+CHILD_TOKENS = 350
+PARENT_TOKENS = 2000
+
+
+def estimate_tokens(text: str) -> int:
+    """Approximate token count for budgeting."""
+    return max(1, len(text) // CHARS_PER_TOKEN)
+
+
+class Piece(BaseModel, frozen=True):
+    """An atomic run of Markdown that must never be split.
+
+    Equations, tables and figures are indivisible: half a derivation is not
+    half as useful, it is useless. Paragraphs are divisible but are the
+    smallest unit worth moving.
+    """
+
+    text: str
+    page: int
+    atomic: bool = False
+
+
+class Chunk(BaseModel, frozen=True):
+    """A retrievable unit of one book."""
+
+    chunk_id: str
+    book_slug: str
+    breadcrumb: str
+    text: str
+    page_start: int
+    page_end: int
+    parent_id: str = ""
+    is_parent: bool = False
+    tokens: int = 0
+    courses: tuple[str, ...] = ()
+    source_tier: int = 0
+    content_types: tuple[str, ...] = Field(default=())
+
+    @property
+    def embedding_text(self) -> str:
+        """What actually gets embedded: the breadcrumb, then the body."""
+        return f"{self.breadcrumb}\n\n{self.text}" if self.breadcrumb else self.text
+
+
+def chunk_id(book_slug: str, page_start: int, page_end: int, text: str) -> str:
+    """Content-addressed identifier.
+
+    Derived from content alone, never from insertion order, so two people
+    ingesting the same material independently produce identical ids and the
+    union of their work is the correct result with no deduplication pass.
+    """
+    payload = f"{book_slug}:{page_start}-{page_end}:{text}".encode()
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def split_pieces(markdown: str) -> list[Piece]:
+    """Break Markdown into atomic and divisible pieces, tracking the page."""
+    pieces: list[Piece] = []
+    page = 0
+    for block in re.split(r"\n{2,}", markdown):
+        block = block.strip()
+        if not block:
+            continue
+        if anchors := PAGE_ANCHOR.findall(block):
+            page = int(anchors[-1])
+            block = PAGE_ANCHOR.sub("", block).strip()
+            if not block:
+                continue
+        pieces.append(Piece(text=block, page=page, atomic=_is_atomic(block)))
+    return pieces
+
+
+def _is_atomic(block: str) -> bool:
+    """Whether a block must survive intact."""
+    return block.startswith(ATOMIC_PREFIXES)
+
+
+class Section(BaseModel, frozen=True):
+    """A run of content under one heading path."""
+
+    breadcrumb: str
+    pieces: tuple[Piece, ...]
+
+    @property
+    def text(self) -> str:
+        return "\n\n".join(piece.text for piece in self.pieces)
+
+    @property
+    def pages(self) -> tuple[int, int]:
+        pages = [piece.page for piece in self.pieces]
+        return (min(pages), max(pages)) if pages else (0, 0)
+
+
+def split_sections(markdown: str, book_title: str = "") -> list[Section]:
+    """Walk the heading tree, yielding one Section per heading path."""
+    trail: list[str] = []
+    pieces: list[Piece] = []
+    sections: list[Section] = []
+
+    def flush() -> None:
+        if pieces:
+            sections.append(
+                Section(
+                    breadcrumb=" > ".join(filter(None, [book_title, *trail])),
+                    pieces=tuple(pieces),
+                )
+            )
+            pieces.clear()
+
+    for piece in split_pieces(markdown):
+        heading = HEADING.match(piece.text)
+        if not heading:
+            pieces.append(piece)
+            continue
+        flush()
+        depth = len(heading.group("hashes"))
+        del trail[depth - 1 :]
+        trail.append(heading.group("title"))
+
+    flush()
+    return sections
+
+
+def _pack(pieces: Sequence[Piece], budget: int) -> Iterator[list[Piece]]:
+    """Group pieces into runs under a token budget, never splitting an atom."""
+    current: list[Piece] = []
+    used = 0
+    for piece in pieces:
+        cost = estimate_tokens(piece.text)
+        if current and used + cost > budget:
+            yield current
+            current, used = [], 0
+        current.append(piece)
+        used += cost
+    if current:
+        yield current
+
+
+def chunk_section(
+    section: Section,
+    book_slug: str,
+    child_tokens: int = CHILD_TOKENS,
+    parent_tokens: int = PARENT_TOKENS,
+) -> list[Chunk]:
+    """Turn one section into its parent chunks and their children."""
+    chunks: list[Chunk] = []
+    for parent_pieces in _pack(section.pieces, parent_tokens):
+        parent = _make_chunk(
+            parent_pieces, section.breadcrumb, book_slug, is_parent=True
+        )
+        chunks.append(parent)
+        chunks.extend(
+            _make_chunk(
+                child_pieces,
+                section.breadcrumb,
+                book_slug,
+                parent_id=parent.chunk_id,
+            )
+            for child_pieces in _pack(parent_pieces, child_tokens)
+        )
+    return chunks
+
+
+def _make_chunk(
+    pieces: Sequence[Piece],
+    breadcrumb: str,
+    book_slug: str,
+    parent_id: str = "",
+    is_parent: bool = False,
+) -> Chunk:
+    text = "\n\n".join(piece.text for piece in pieces)
+    pages = [piece.page for piece in pieces]
+    start, end = (min(pages), max(pages)) if pages else (0, 0)
+    return Chunk(
+        chunk_id=chunk_id(book_slug, start, end, text),
+        book_slug=book_slug,
+        breadcrumb=breadcrumb,
+        text=text,
+        page_start=start,
+        page_end=end,
+        parent_id=parent_id,
+        is_parent=is_parent,
+        tokens=estimate_tokens(text),
+        content_types=tuple(
+            sorted({"atomic" if piece.atomic else "prose" for piece in pieces})
+        ),
+    )
+
+
+def chunk_book(
+    markdown: str,
+    book_slug: str,
+    book_title: str = "",
+    courses: tuple[str, ...] = (),
+    source_tier: int = 0,
+) -> list[Chunk]:
+    """Chunk one extracted book."""
+    chunks: list[Chunk] = []
+    for section in split_sections(markdown, book_title):
+        for chunk in chunk_section(section, book_slug):
+            chunks.append(
+                chunk.model_copy(
+                    update={"courses": courses, "source_tier": source_tier}
+                )
+            )
+    return chunks
