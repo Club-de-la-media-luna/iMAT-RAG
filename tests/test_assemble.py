@@ -326,3 +326,35 @@ def test_only_images_and_charts_count_as_figures() -> None:
     )
 
     assert [b.is_figure for b in blocks] == [True, True, False, False]
+
+
+# --- control characters from OCR --------------------------------------------
+
+
+def test_nul_bytes_from_ocr_never_reach_the_markdown() -> None:
+    """OCR of scanned pages emits stray NULs.
+
+    They carry nothing, they travel into chunks and embeddings, and the Hub
+    reads a file containing one as binary and rejects the whole upload.
+    """
+    blocks = parse_blocks(
+        [{"type": "text", "text": "value\x00 iteration", "page_idx": 0}]
+    )
+
+    rendered = assemble(blocks)
+
+    assert "\x00" not in rendered
+    assert "value iteration" in rendered
+
+
+def test_other_control_characters_go_too() -> None:
+    blocks = parse_blocks([{"type": "text", "text": "a\x01b\x1fc", "page_idx": 0}])
+
+    assert "abc" in assemble(blocks)
+
+
+def test_newlines_and_tabs_survive() -> None:
+    """They are structure, not noise."""
+    blocks = parse_blocks([{"type": "text", "text": "a\tb", "page_idx": 0}])
+
+    assert "a\tb" in assemble(blocks)

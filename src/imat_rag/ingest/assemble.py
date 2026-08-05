@@ -232,6 +232,20 @@ def _render(block: Block, outline: Outline | None, figures: dict[str, str]) -> s
     return _render_text(block, outline)
 
 
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+"""C0 controls that carry no text, keeping newline and tab, which carry structure."""
+
+
+def strip_control_characters(text: str) -> str:
+    """Remove control characters that OCR leaves behind.
+
+    Scanned pages come back with stray NULs — 630 of them in Sutton & Barto
+    alone. They mean nothing, they travel into chunks and embeddings, and a
+    file containing one reads as binary to the Hub, which rejects the upload.
+    """
+    return CONTROL_CHARACTERS.sub("", text)
+
+
 def assemble(
     blocks: Sequence[Block],
     outline: Outline | None = None,
@@ -260,7 +274,7 @@ def assemble(
         if rendered := _render(block, outline, figures):
             out.append(rendered)
 
-    return "\n\n".join(out) + "\n"
+    return strip_control_characters("\n\n".join(out) + "\n")
 
 
 def _injected_headings(
