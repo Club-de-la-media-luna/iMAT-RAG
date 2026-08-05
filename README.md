@@ -13,6 +13,7 @@ Hugging Face Hub dataset repository.
 
 ## Docs
 
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — adding material (no tooling needed), and code conventions.
 - [docs/onboarding.md](./docs/onboarding.md) — for the group: how to get it running.
 - [CONTEXT.md](./CONTEXT.md) — the vocabulary. Read this first.
 - [docs/design.md](./docs/design.md) — architecture, corpus, stages, build order.
