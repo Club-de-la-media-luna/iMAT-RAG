@@ -16,6 +16,8 @@ Hugging Face Hub dataset repository.
 - [CONTEXT.md](./CONTEXT.md) — the vocabulary. Read this first.
 - [docs/design.md](./docs/design.md) — architecture, corpus, stages, build order.
 - [docs/adr/](./docs/adr/) — decisions and the alternatives that were rejected.
+- [docs/STATE.md](./docs/STATE.md) — what is done, what is next, known issues.
+- [docs/m2-extraction-benchmark.md](./docs/m2-extraction-benchmark.md) — why mineru.
 
 ## Getting started
 
@@ -32,5 +34,9 @@ nearest `master_kb` directory at or above the working directory.
 
 ## Status
 
-M1 done — scaffold, config resolution, CLI skeleton. Next is M2, the extraction
-benchmark. See the build order in [docs/design.md](./docs/design.md).
+**Working end to end.** 21 books indexed; `rag search` returns cited passages,
+including Spanish queries against English books and passages recovered by OCR
+from scanned PDFs.
+
+M0–M6 done. M7 (MCP server) and M8 (publish to Hugging Face) remain — see
+**[docs/STATE.md](./docs/STATE.md)**, which is the resume point.
