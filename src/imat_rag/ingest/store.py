@@ -77,6 +77,26 @@ def read_chunks(paths: Paths, slug: str) -> Iterator[Chunk]:
                 yield Chunk.model_validate_json(line)
 
 
+def locate_chunk(paths: Paths, chunk_id: str) -> str:
+    """Which book holds a chunk id, or `""` if none does.
+
+    Scans the raw lines and only matches the serialised `chunk_id` field, so
+    finding one chunk never costs parsing forty thousand. `parent_id` carries
+    the same values under a different key and is therefore not a false match.
+    """
+    if not chunk_id:
+        return ""
+    needle = f'"chunk_id":"{chunk_id}"'
+    for book in read_manifest(paths).books:
+        target = chunk_path(paths, book.slug)
+        if not target.is_file():
+            continue
+        with target.open(encoding="utf-8") as handle:
+            if any(needle in line for line in handle):
+                return book.slug
+    return ""
+
+
 def read_manifest(paths: Paths) -> Manifest:
     """Load the manifest, or an empty one if this is the first run."""
     if not paths.manifest.is_file():

@@ -144,9 +144,10 @@ def test_parents_are_stored_without_vectors(tmp_path: Path) -> None:
     seed(paths)
     build(paths, EmbedConfig(), FakeEncoder())
 
-    row = lance.connect(paths.index).open_table(lance.PARENTS).to_pandas().iloc[0]
+    table = lance.connect(paths.index).open_table(lance.PARENTS)
+    row = table.to_arrow().to_pylist()[0]
 
-    assert lance.VECTOR_FIELD not in row.index
+    assert lance.VECTOR_FIELD not in row
 
 
 def test_rebuilding_replaces_rather_than_duplicating(tmp_path: Path) -> None:
@@ -164,7 +165,7 @@ def test_the_embedded_text_carries_the_breadcrumb(tmp_path: Path) -> None:
     seed(paths)
     build(paths, EmbedConfig(), FakeEncoder())
 
-    rows = lance.connect(paths.index).open_table(lance.CHILDREN).to_list()
+    rows = lance.connect(paths.index).open_table(lance.CHILDREN).to_arrow().to_pylist()
 
     assert all(row["text"].startswith("Bishop PRML") for row in rows)
 

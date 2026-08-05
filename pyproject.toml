@@ -16,6 +16,9 @@ dependencies = [
 # Dense embeddings only: LanceDB supplies the lexical half with BM25,
 # so BGE-M3's sparse output is unused and sentence-transformers suffices.
 index = ["lancedb>=0.13", "sentence-transformers>=3.0", "tantivy>=0.22"]
+mcp = [
+    "mcp>=1.2",
+]
 
 [project.scripts]
 rag = "imat_rag.cli:app"

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from imat_rag.config import Paths
 from imat_rag.index import lance
@@ -23,7 +23,7 @@ from imat_rag.index.embed import (
     load_encoder,
 )
 from imat_rag.ingest.chunk import Chunk
-from imat_rag.ingest.store import read_chunks, read_manifest
+from imat_rag.ingest.store import locate_chunk, read_chunks, read_manifest
 
 
 class Hit(BaseModel):
@@ -40,15 +40,29 @@ class Hit(BaseModel):
     matched_text: str = ""
     """The child that matched, when the returned text is its parent."""
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def citation(self) -> str:
-        """Human-readable source, e.g. `Bishop PRML > 9.4, pp. 439-441`."""
+        """Human-readable source, e.g. `Bishop PRML > 9.4, pp. 439-441`.
+
+        Computed rather than plain so that it survives serialisation: an MCP
+        client receives the citation with the passage, not the pieces to
+        reassemble it from.
+        """
         pages = (
             f"p. {self.page_start}"
             if self.page_start == self.page_end
             else f"pp. {self.page_start}-{self.page_end}"
         )
         return f"{self.breadcrumb}, {pages}"
+
+
+class Neighbourhood(BaseModel):
+    """One chunk and the sections either side of it, for following context."""
+
+    chunk: Hit
+    previous: Hit | None = None
+    following: Hit | None = None
 
 
 def all_chunks(paths: Paths) -> Iterator[Chunk]:
@@ -120,6 +134,53 @@ def search(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         db.open_table(lance.PARENTS), [row["parent_id"] for row in matches]
     )
     return _expanded(matches, parents)
+
+
+def fetch(paths: Paths, chunk_id: str) -> Neighbourhood | None:
+    """One chunk and its neighbours, for following an argument past its edges.
+
+    Read from the chunk store rather than the index, because document order is
+    exact there and a citation that has already been returned needs no search.
+    A child resolves to its parent, on the same reasoning as search expansion:
+    the child is what matched, the parent is what is worth reading.
+    """
+    slug = locate_chunk(paths, chunk_id)
+    if not slug:
+        return None
+
+    chunks = list(read_chunks(paths, slug))
+    by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    target = by_id.get(chunk_id)
+    if target is None:
+        return None
+
+    matched = ""
+    parent = by_id.get(target.parent_id)
+    if not target.is_parent and parent is not None:
+        matched, target = target.text, parent
+
+    order = [chunk for chunk in chunks if chunk.is_parent == target.is_parent]
+    at = order.index(target)
+    return Neighbourhood(
+        chunk=_from_chunk(target, matched),
+        previous=_from_chunk(order[at - 1]) if at > 0 else None,
+        following=_from_chunk(order[at + 1]) if at + 1 < len(order) else None,
+    )
+
+
+def _from_chunk(chunk: Chunk, matched: str = "") -> Hit:
+    """A stored chunk, in the shape callers already know how to cite."""
+    return Hit(
+        chunk_id=chunk.chunk_id,
+        book_slug=chunk.book_slug,
+        breadcrumb=chunk.breadcrumb,
+        text=chunk.text,
+        page_start=chunk.page_start,
+        page_end=chunk.page_end,
+        courses=chunk.courses,
+        score=0.0,
+        matched_text=matched,
+    )
 
 
 def _expanded(

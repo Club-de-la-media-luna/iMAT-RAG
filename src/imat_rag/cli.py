@@ -5,6 +5,8 @@ from __future__ import annotations
 import typer
 
 from imat_rag import config
+from imat_rag.coverage import COURSE_NAMES
+from imat_rag.coverage import coverage as report_coverage
 from imat_rag.index.search import build as build_index
 from imat_rag.index.search import search as run_search
 from imat_rag.ingest.catalogue import SourceTier, collect
@@ -17,6 +19,7 @@ from imat_rag.ingest.store import (
     read_manifest,
     write_manifest,
 )
+from imat_rag.serve import serve as run_server
 
 app = typer.Typer(
     help="Retrieval over the MIA master's reading list.",
@@ -61,23 +64,10 @@ def paths() -> None:
         typer.echo(f"{mark} {label.ljust(width)}  {path}")
 
 
-_COURSE_NAMES = {
-    "DRL": "Deep Reinforcement Learning",
-    "EE": "Ética y explicabilidad",
-    "GI": "Geometría de la información",
-    "IAG": "Inteligencia artificial geométrica",
-    "IAP": "Inteligencia artificial probabilística",
-    "IM": "Ingeniería de modelos",
-    "MD": "Modelos diferenciales",
-    "MGP": "Modelos generativos profundos",
-    "MP": "Métodos probabilísticos",
-}
-
-
 @app.command()
 def courses() -> None:
     """List the courses in the knowledge base."""
-    for code, name in _COURSE_NAMES.items():
+    for code, name in COURSE_NAMES.items():
         typer.echo(f"{code:<4} --> {name}")
 
 
@@ -193,31 +183,17 @@ def coverage() -> None:
     acquired books gets no answer rather than one drawn from adjacent
     material.
     """
-    resolved = _resolve()
-    indexed = {b.slug: b for b in extracted_books(resolved)}
-    manifest = read_manifest(resolved)
-    chunks_by_slug = {b.slug: b.chunks for b in manifest.books}
-
-    rows: dict[str, dict[str, int]] = {}
-    for meta in indexed.values():
-        for course in meta.courses:
-            entry = rows.setdefault(course, {"books": 0, "pages": 0, "chunks": 0})
-            entry["books"] += 1
-            entry["pages"] += meta.pages
-            entry["chunks"] += chunks_by_slug.get(meta.slug, 0)
-
-    for course in sorted(_COURSE_NAMES):
-        totals = rows.get(course)
-        if totals is None:
+    for entry in report_coverage(_resolve()):
+        if not entry.indexed:
             typer.secho(
-                f"{course:<4} {_COURSE_NAMES[course][:42]:<42} NO MATERIAL INDEXED",
+                f"{entry.course:<4} {entry.name[:42]:<42} NO MATERIAL INDEXED",
                 fg=typer.colors.YELLOW,
             )
             continue
         typer.echo(
-            f"{course:<4} {_COURSE_NAMES[course][:42]:<42} "
-            f"{totals['books']:>2} books {totals['pages']:>6} pages "
-            f"{totals['chunks']:>6} chunks"
+            f"{entry.course:<4} {entry.name[:42]:<42} "
+            f"{entry.books:>2} books {entry.pages:>6} pages "
+            f"{entry.chunks:>6} chunks"
         )
 
 
@@ -259,6 +235,14 @@ def search(
         )
         body = hit.text if full else hit.text[:400].replace("\n", " ")
         typer.echo(f"    {body}{'' if full else ' ...'}")
+
+
+@app.command()
+def serve(
+    transport: str = typer.Option("stdio", help="stdio, sse or streamable-http"),
+) -> None:
+    """Expose search, fetch and coverage to an agent over MCP."""
+    run_server(_resolve(), transport)
 
 
 if __name__ == "__main__":
