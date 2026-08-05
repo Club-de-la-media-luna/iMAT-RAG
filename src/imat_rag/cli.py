@@ -61,22 +61,23 @@ def paths() -> None:
         typer.echo(f"{mark} {label.ljust(width)}  {path}")
 
 
+_COURSE_NAMES = {
+    "DRL": "Deep Reinforcement Learning",
+    "EE": "Ética y explicabilidad",
+    "GI": "Geometría de la información",
+    "IAG": "Inteligencia artificial geométrica",
+    "IAP": "Inteligencia artificial probabilística",
+    "IM": "Ingeniería de modelos",
+    "MD": "Modelos diferenciales",
+    "MGP": "Modelos generativos profundos",
+    "MP": "Métodos probabilísticos",
+}
+
+
 @app.command()
 def courses() -> None:
     """List the courses in the knowledge base."""
-
-    names = {
-        "DRL": "Deep Reinforcement Learning",
-        "EE": "Etica y explicabilidad",
-        "GI": "Geometría de la información",
-        "IAG": "Inteligencia artificial geométrica",
-        "IAP": "Inteligencia artificial probabilística",
-        "IM": "Ingeneria de modelos",
-        "MD": "Modelos diferenciales",
-        "MGP": "Modelos generativos profundos",
-        "MP": "Métodos probabilísticos",
-    }
-    for code, name in names.items():
+    for code, name in _COURSE_NAMES.items():
         typer.echo(f"{code:<4} --> {name}")
 
 
@@ -182,6 +183,42 @@ def status() -> None:
     )
     for book in [b for b in extracted if b.warnings]:
         typer.echo(f"  ! {book.slug[:50]:<50} {'; '.join(book.warnings)}")
+
+
+@app.command()
+def coverage() -> None:
+    """What the corpus does and does not contain, per course.
+
+    The system is deliberately honest about its holes: a course with no
+    acquired books gets no answer rather than one drawn from adjacent
+    material.
+    """
+    resolved = _resolve()
+    indexed = {b.slug: b for b in extracted_books(resolved)}
+    manifest = read_manifest(resolved)
+    chunks_by_slug = {b.slug: b.chunks for b in manifest.books}
+
+    rows: dict[str, dict[str, int]] = {}
+    for meta in indexed.values():
+        for course in meta.courses:
+            entry = rows.setdefault(course, {"books": 0, "pages": 0, "chunks": 0})
+            entry["books"] += 1
+            entry["pages"] += meta.pages
+            entry["chunks"] += chunks_by_slug.get(meta.slug, 0)
+
+    for course in sorted(_COURSE_NAMES):
+        totals = rows.get(course)
+        if totals is None:
+            typer.secho(
+                f"{course:<4} {_COURSE_NAMES[course][:42]:<42} NO MATERIAL INDEXED",
+                fg=typer.colors.YELLOW,
+            )
+            continue
+        typer.echo(
+            f"{course:<4} {_COURSE_NAMES[course][:42]:<42} "
+            f"{totals['books']:>2} books {totals['pages']:>6} pages "
+            f"{totals['chunks']:>6} chunks"
+        )
 
 
 @app.command()

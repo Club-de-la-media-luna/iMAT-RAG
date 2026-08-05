@@ -114,8 +114,8 @@ context, `coverage()` so the host agent knows what is not indexed.
 | ~~M2~~ | ~~Extraction benchmark~~ — **done**: mineru wins, ≈12 h for the basic tier ([results](./m2-extraction-benchmark.md)) |
 | ~~M3~~ | ~~Extract all 21 basic books~~ — **done**: 21/21, 0 failures, ~29.9M chars, full page coverage, both scans recovered |
 | ~~M4~~ | ~~Chunk stage~~ — **done**: 39,036 chunks (10,890 parents / 28,146 children), 0 duplicate ids, 0 orphans |
-| M5 | Embed and index |
-| M6 | `rag search` CLI + coverage report |
+| ~~M5~~ | ~~Embed and index~~ — **done**: 28,146 children embedded with BGE-M3, 173 MB LanceDB index |
+| ~~M6~~ | ~~`rag search` CLI + coverage report~~ — **done**: hybrid search working, cross-lingual verified, `rag coverage` reports gaps |
 | M7 | MCP server |
 | M8 | Publish artifacts to HF Hub; group onboarding |
 
