@@ -544,6 +544,9 @@ index = [
 mcp = [
     { name = "mcp" },
 ]
+publish = [
+    { name = "huggingface-hub" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -554,6 +557,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub", marker = "extra == 'publish'", specifier = ">=0.24" },
     { name = "lancedb", marker = "extra == 'index'", specifier = ">=0.13" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.2" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -562,7 +566,7 @@ requires-dist = [
     { name = "tantivy", marker = "extra == 'index'", specifier = ">=0.22" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["index", "mcp"]
+provides-extras = ["index", "mcp", "publish"]
 
 [package.metadata.requires-dev]
 dev = [

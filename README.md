@@ -13,6 +13,7 @@ Hugging Face Hub dataset repository.
 
 ## Docs
 
+- [docs/onboarding.md](./docs/onboarding.md) — for the group: how to get it running.
 - [CONTEXT.md](./CONTEXT.md) — the vocabulary. Read this first.
 - [docs/design.md](./docs/design.md) — architecture, corpus, stages, build order.
 - [docs/adr/](./docs/adr/) — decisions and the alternatives that were rejected.
@@ -65,11 +66,30 @@ Install the extras it needs with `uv sync --extra index --extra mcp`. The first
 `search` of a session loads BGE-M3 and takes ~15 s; every one after is instant,
 and `coverage` never loads it at all.
 
+## The artifacts
+
+`derived/` — extracted Markdown, figures, chunks and the index, ~414 MB — is
+gitignored in `master_kb` and shipped through a private Hugging Face dataset
+repository instead.
+
+```sh
+uv run rag pull                 # the revision recorded in master_kb/derived.json
+uv run rag pull --revision abc  # or an exact one
+uv run rag push -m "..."        # publish, and record the revision it created
+```
+
+`push` refuses to upload into a public repository. The index is as private as
+the PDFs it was built from — embeddings can be inverted back towards their
+source text — so this is not merely a size decision; see
+[ADR-0001](./docs/adr/0001-public-code-private-data.md).
+
 ## Status
 
 **Working end to end.** 21 books indexed; `rag search` returns cited passages,
 including Spanish queries against English books and passages recovered by OCR
 from scanned PDFs. `rag serve` answers the same questions over MCP.
 
-M0–M7 done. M8 (publish to Hugging Face) remains — see
-**[docs/STATE.md](./docs/STATE.md)**, which is the resume point.
+M0–M7 done. M8 is written and tested but not yet executed: the Hugging Face
+organisation does not exist and no write token is configured, so nothing has
+been uploaded. See **[docs/STATE.md](./docs/STATE.md)**, which is the resume
+point.

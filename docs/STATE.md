@@ -3,12 +3,12 @@
 Resume point for the next session. Read [CONTEXT.md](../CONTEXT.md) for
 vocabulary, [design.md](./design.md) for the shape, [adr/](./adr/) for why.
 
-Last updated after M6.
+Last updated after M7, and after M8's code but not its upload.
 
-## Done: M0 – M6
+## Done: M0 – M7
 
-The system works end to end. `rag search` returns correctly cited passages from
-21 books.
+The system works end to end, from the CLI and over MCP. `rag search` and the
+`search` tool return the same correctly cited passages from 21 books.
 
 | | |
 | --- | --- |
@@ -16,9 +16,10 @@ The system works end to end. `rag search` returns correctly cited passages from
 | Extracted | ~29.9M characters, complete page coverage on every book, 0 failures |
 | Chunked | 39,036 chunks — 10,890 parents, 28,146 children, 7.2M tokens |
 | Indexed | 28,146 children embedded with BGE-M3, 173 MB LanceDB, 2 tables |
-| Tests | 129 passing, lint 10.00/10 |
+| Artifacts | ~414 MB publishable (`extracted`, `figures`, `chunks`, `index`, manifest) |
+| Tests | 178 passing, lint 10.00/10 |
 
-Two results that closed open risks:
+Three results that closed open risks:
 
 - **Cross-lingual retrieval works.** `¿qué es la divergencia de
   Kullback-Leibler?` returns Bishop PRML §10.1.2 — Spanish query, English book,
@@ -26,24 +27,56 @@ Two results that closed open risks:
 - **OCR'd mathematics is retrievable.** `what is a Riemannian metric on a
   manifold` returns do Carmo ch. 2, pp. 52–54, from a scanned PDF with no text
   layer. GI and MD are not write-offs.
+- **The MCP server answers over real stdio.** Verified with an actual client:
+  handshake, three tools listed, `coverage` reporting `EE` as the one course
+  with no material. `fetch` costs 0.05 s on the real 39k-chunk corpus.
 
-## Next: M7 and M8
+## M8: written, not executed
 
-**M7 — MCP server.** Expose three tools over the existing
-`imat_rag.index.search`:
+`rag push` and `rag pull` exist and are tested; the onboarding note is
+[written](./onboarding.md). **Nothing has been uploaded.** Two things are
+missing, and neither is a code problem:
 
-- `search(query, course?, k?)` → the `Hit` list, already carrying `.citation`
-- `fetch(chunk_id)` → one chunk plus its neighbours, for following context
-- `coverage()` → per-course book/page/chunk counts, so the host agent knows what
-  is missing rather than guessing
+1. **The Hugging Face organisation does not exist.** `Club-de-la-media-luna` is
+   a GitHub organisation; there is no account of that name on the Hub —
+   `/api/organizations/Club-de-la-media-luna/overview` is a 404. Someone has to
+   create it (or the group has to pick another namespace, in which case change
+   `DEFAULT_REPO` in `src/imat_rag/publish.py`).
+2. **The local token is read-only.** `huggingface_hub.HfApi().whoami()` reports
+   `JES0406`, role `read`, no organisations. Publishing needs a write token:
+   `huggingface-cli login` with one created at
+   <https://huggingface.co/settings/tokens>.
 
-The retrieval half is done and tested; M7 is a protocol wrapper over
-`search()` in `src/imat_rag/index/search.py`. No new retrieval logic.
+`rag push` was run against the real Hub and refused as expected, with the
+guidance above rather than a traceback:
 
-**M8 — publish.** Push `derived/` to a **private** Hugging Face dataset repo
-under `Club-de-la-media-luna` (see [ADR-0001](./adr/0001-public-code-private-data.md)),
-add `rag pull`, and write the group onboarding note. Nothing in `derived/` is
-backed up anywhere today — this is the only step that changes that.
+```
+403 Forbidden: You don't have the rights to create a dataset under the
+namespace "Club-de-la-media-luna".
+```
+
+No pointer was written, so nothing claims to have been published.
+
+With both in place the whole of M8 is:
+
+```sh
+uv run rag push -m "first publish of the basic tier"
+# then, in master_kb, commit the derived.json it wrote
+```
+
+`push` creates the repository private, refuses to upload into a public one,
+and uploads only the five declared artifacts — `bench`, `blocks` and `work`
+are scratch and would nearly double the payload. It writes `derived.json`
+beside `derived/`, and that pointer is what makes `rag pull` reproducible:
+everyone gets the recorded revision rather than whatever the tip happens to
+be.
+
+**`derived/` is still backed up nowhere.** That is what this step is for.
+
+## Then
+
+Reranker (only once it can be shown to help), `rag ask` via litellm,
+complementary tier, slides and exams tiers, web UI, CI.
 
 ## Commands
 
@@ -53,10 +86,12 @@ uv run rag coverage       # what each course has, and what it does not
 uv run rag status         # extracted vs chunked, with per-book warnings
 uv run rag books --probe  # the corpus as the ledgers describe it
 uv run rag search "..." -k 5 [--course DRL] [--full]
+uv run rag serve          # the MCP server, over stdio
 
 uv run rag extract        # resumable; finished books are skipped
 uv run rag chunk          # re-chunk everything, refresh the manifest
 uv run rag index          # re-embed and rebuild (~25 min on the 3050)
+uv run rag push / pull    # the artifacts, to and from the Hub
 ```
 
 ## Known issues, none blocking
@@ -69,6 +104,10 @@ uv run rag index          # re-embed and rebuild (~25 min on the 3050)
 - **Two ledger entries are wrong**: Whittle (6 pages) and Higham & Kloeden
   (4 pages) are truncated front-matter PDFs marked acquired. Both complementary
   tier, so v1 never touches them, but `fetch_literature.py` validates nothing.
+- **`rag pull` records what it asked for, not what it got.** Pulling without a
+  pointer records `main`, which is a moving target rather than a pin. Resolving
+  the revision to its sha after download would fix it; it only matters once
+  more than one person is pushing.
 - **No evaluation harness**, by choice. Revisit when the reranker question
   becomes live — that decision is not settleable by spot-checking.
 - **No reranker**, by choice. Add only once it can be shown to help.

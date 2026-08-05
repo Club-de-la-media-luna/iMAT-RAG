@@ -19,6 +19,9 @@ from imat_rag.ingest.store import (
     read_manifest,
     write_manifest,
 )
+from imat_rag.publish import CannotReachHub, NothingToPublish, RepositoryIsPublic
+from imat_rag.publish import pull as pull_artifacts
+from imat_rag.publish import push as push_artifacts
 from imat_rag.serve import serve as run_server
 
 app = typer.Typer(
@@ -235,6 +238,38 @@ def search(
         )
         body = hit.text if full else hit.text[:400].replace("\n", " ")
         typer.echo(f"    {body}{'' if full else ' ...'}")
+
+
+@app.command()
+def pull(
+    revision: str = typer.Option(
+        "", help="Pin an exact revision, or use the recorded one"
+    ),
+) -> None:
+    """Download the corpus artifacts from the Hugging Face dataset repository."""
+    typer.echo("downloading artifacts (~414 MB on a first pull)...")
+    try:
+        pointer = pull_artifacts(_resolve(), revision=revision)
+    except CannotReachHub as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"pulled {pointer.repo_id} at {pointer.revision}")
+
+
+@app.command()
+def push(
+    message: str = typer.Option("", "--message", "-m", help="Commit message"),
+) -> None:
+    """Publish the corpus artifacts, and record the revision for the group."""
+    try:
+        pointer = push_artifacts(_resolve(), message=message)
+    except (NothingToPublish, RepositoryIsPublic, CannotReachHub) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"pushed {pointer.repo_id} at {pointer.revision}")
+    typer.echo(
+        f"commit the pointer in {config.SIBLING_NAME} so the group can follow it"
+    )
 
 
 @app.command()
