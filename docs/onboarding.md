@@ -116,10 +116,40 @@ why the Hub repo is private rather than merely unlisted — see
 
 ## If you add material
 
+**Put the PDF in the course's literature directory**, in `master_kb`:
+
+```
+courses/<CODE>/raw/literature/<filename>.pdf
+```
+
+**Then record it in that course's ledger**, `courses/<CODE>/literature.md`.
+This is the step that makes it exist: the pipeline reads the ledgers, not the
+directory. A PDF on disk with no ledger entry is invisible.
+
+```markdown
+## Bibliografía básica
+
+### Sutton, R. & Barto, A. — Reinforcement Learning: An Introduction (2018)
+- EN: ✅ `sutton-barto-reinforcement-learning-2018.pdf`
+```
+
+The `##` heading decides the tier — *básica* is indexed in v1, *complementaria*
+is not. `✅` means the file is on disk; `⬇`, `🔗` and `❌` are read and skipped,
+and `rag coverage` reports them as gaps. The filename goes in backticks.
+
+List the same book under every course that assigns it. It is stored, extracted
+and embedded once, carrying all of their codes. Where two courses disagree
+about the tier, the higher one wins — required reading anywhere is required
+reading.
+
+**Then run the pipeline and publish:**
+
 ```sh
+uv run rag books --probe  # confirm the ledger sees your book
 uv run rag extract        # resumable; finished books are skipped
-uv run rag chunk
-uv run rag index
+uv run rag chunk          # fast; untouched books keep their ids
+uv run rag index          # ~25 min — a full rebuild, not an append
+uv run rag pull           # if anyone has pushed since you last synced
 uv run rag push -m "add the IM slides"
 ```
 
@@ -130,3 +160,6 @@ nobody follows it.
 Chunk ids are content-addressed, so two people ingesting the same book
 independently produce identical ids and the union of their work is the correct
 result — there is no deduplication pass to run.
+
+There is no locking, though. Two people indexing the same afternoon produce two
+full rebuilds and the second push wins. Say so in the group chat first.
