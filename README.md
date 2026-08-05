@@ -90,7 +90,7 @@ source text — so this is not merely a size decision; see
 including Spanish queries against English books and passages recovered by OCR
 from scanned PDFs. `rag serve` answers the same questions over MCP.
 
-M0–M7 done. M8 is written and tested but not yet executed: the Hugging Face
-organisation does not exist and no write token is configured, so nothing has
-been uploaded. See **[docs/STATE.md](./docs/STATE.md)**, which is the resume
-point.
+M0–M8 done. The artifacts are published to a private Hugging Face dataset
+repository — 5,528 files, revision `02b759af` — so `rag pull` gives a new
+group member a working index without re-extracting anything. See
+**[docs/STATE.md](./docs/STATE.md)**, which is the resume point.

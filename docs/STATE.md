@@ -3,9 +3,9 @@
 Resume point for the next session. Read [CONTEXT.md](../CONTEXT.md) for
 vocabulary, [design.md](./design.md) for the shape, [adr/](./adr/) for why.
 
-Last updated after M7, and after M8's code but not its upload.
+Last updated after M8. Every milestone in the build order is done.
 
-## Done: M0 – M7
+## Done: M0 – M8
 
 The system works end to end, from the CLI and over MCP. `rag search` and the
 `search` tool return the same correctly cited passages from 21 books.
@@ -16,14 +16,14 @@ The system works end to end, from the CLI and over MCP. `rag search` and the
 | Extracted | ~29.9M characters, complete page coverage on every book, 0 failures |
 | Chunked | 39,036 chunks — 10,890 parents, 28,146 children, 7.2M tokens |
 | Indexed | 28,146 children embedded with BGE-M3, 173 MB LanceDB, 2 tables |
-| Artifacts | ~414 MB publishable (`extracted`, `figures`, `chunks`, `index`, manifest) |
-| Tests | 178 passing, lint 10.00/10 |
+| Published | 5,528 files on the Hub, private, revision `02b759af` |
+| Tests | 181 passing, lint 10.00/10 |
 
 Three results that closed open risks:
 
 - **Cross-lingual retrieval works.** `¿qué es la divergencia de
-  Kullback-Leibler?` returns Bishop PRML §10.1.2 — Spanish query, English book,
-  no translation step.
+  Kullback-Leibler?` returns Murphy vol. 2 §2.7.1.1 — Spanish query, English
+  book, no translation step.
 - **OCR'd mathematics is retrievable.** `what is a Riemannian metric on a
   manifold` returns do Carmo ch. 2, pp. 52–54, from a scanned PDF with no text
   layer. GI and MD are not write-offs.
@@ -31,47 +31,35 @@ Three results that closed open risks:
   handshake, three tools listed, `coverage` reporting `EE` as the one course
   with no material. `fetch` costs 0.05 s on the real 39k-chunk corpus.
 
-## M8: written, not executed
+## M8: published
 
-`rag push` and `rag pull` exist and are tested; the onboarding note is
-[written](./onboarding.md). **Nothing has been uploaded.** Two things are
-missing, and neither is a code problem:
+`Club-de-la-media-luna/master_kb-derived`, **private**, revision
+`02b759af7895e5647cc3f228c49bc5399b55302b` — 5,528 files: 21 chunk records,
+21 books of Markdown with their sidecars, 5,122 figures, 341 index files and
+the manifest. Verified by fetching files back from that revision and comparing
+bytes: identical.
 
-1. **The Hugging Face organisation does not exist.** `Club-de-la-media-luna` is
-   a GitHub organisation; there is no account of that name on the Hub —
-   `/api/organizations/Club-de-la-media-luna/overview` is a 404. Someone has to
-   create it (or the group has to pick another namespace, in which case change
-   `DEFAULT_REPO` in `src/imat_rag/publish.py`).
-2. **The local token is read-only.** `huggingface_hub.HfApi().whoami()` reports
-   `JES0406`, role `read`, no organisations. Publishing needs a write token:
-   `huggingface-cli login` with one created at
-   <https://huggingface.co/settings/tokens>.
+`derived/` is backed up. That took the whole of M0–M8 to become true.
 
-`rag push` was run against the real Hub and refused as expected, with the
-guidance above rather than a traceback:
+**One thing left for a human**: `derived.json` is untracked in `master_kb`.
+Commit it — it is the pointer `rag pull` reads, and without it nobody can
+follow this revision. (`master_kb#5`, which gitignores `derived/`, is still
+open; until it merges `git status` there also shows ~700 MB untracked.)
 
-```
-403 Forbidden: You don't have the rights to create a dataset under the
-namespace "Club-de-la-media-luna".
-```
+### What the first push taught us
 
-No pointer was written, so nothing claims to have been published.
+It was rejected. The Hub reads a file containing a NUL byte as binary and
+refuses the commit, and OCR had left 630 NULs in Sutton & Barto — 3,799 control
+characters across 13 of the 21 books. They had travelled all the way into the
+chunk records and the embedded text, so they were in search results too.
 
-With both in place the whole of M8 is:
+`assemble` now strips them, books converted before the fix were repaired in
+place rather than re-extracted, and chunks and the index were rebuilt from the
+repaired Markdown. Chunk ids for the affected books changed — they are
+content-addressed, and the content changed.
 
-```sh
-uv run rag push -m "first publish of the basic tier"
-# then, in master_kb, commit the derived.json it wrote
-```
-
-`push` creates the repository private, refuses to upload into a public one,
-and uploads only the five declared artifacts — `bench`, `blocks` and `work`
-are scratch and would nearly double the payload. It writes `derived.json`
-beside `derived/`, and that pointer is what makes `rag pull` reproducible:
-everyone gets the recorded revision rather than whatever the tip happens to
-be.
-
-**`derived/` is still backed up nowhere.** That is what this step is for.
+Worth remembering: the corpus had a defect that twelve hours of extraction,
+39,036 chunks and a full index build did not surface. Publishing did.
 
 ## Then
 
@@ -108,6 +96,12 @@ uv run rag push / pull    # the artifacts, to and from the Hub
   pointer records `main`, which is a moving target rather than a pin. Resolving
   the revision to its sha after download would fix it; it only matters once
   more than one person is pushing.
+- **The inbox repository does not exist yet.** `CONTRIBUTING.md` tells
+  contributors to drag files into
+  `Club-de-la-media-luna/master_kb-inbox`, and `rag inbox` — which would file
+  them into the course directories and write the ledger entries — is not
+  written. Until both exist, material arrives by whatever route the group
+  improvises.
 - **No evaluation harness**, by choice. Revisit when the reranker question
   becomes live — that decision is not settleable by spot-checking.
 - **No reranker**, by choice. Add only once it can be shown to help.
