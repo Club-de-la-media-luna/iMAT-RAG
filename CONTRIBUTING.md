@@ -11,12 +11,29 @@ Two ways in. Most people want the first one.
 
 ## Adding material
 
-Drag files into the private inbox on Hugging Face:
-**[Club-de-la-media-luna/master_kb-inbox](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox)**
+You keep your own repository and share it. Nothing of yours joins this
+organisation, and nothing of ours is open to you — we copy across what you
+offer, when you tell us it is ready.
 
-You need a Hugging Face account and an invitation to the organisation. Ask in
-the group chat; it takes a minute. Nothing else — no git, no Python, no
-command line.
+All you need is a Hugging Face account. No git, no Python, no command line.
+
+### Four steps, once
+
+1. **Duplicate the template.** Open
+   [master_kb-inbox-template](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox-template),
+   click the three dots at the top right, choose **Duplicate this dataset**.
+   In the dialog set **Owner** to your own account and **visibility to
+   Private**. It arrives with every course folder already made.
+2. **Drag your files in**, into the folder that matches (below).
+3. **Settings → Collaborators**, add the maintainer with **read** access.
+4. **Send the repository name** in the group chat — `yourname/master_kb-inbox`.
+
+After that, adding more material is just step 2 again.
+
+> **Private is not optional.** This is course material we are not free to
+> republish. `rag inbox` checks, and refuses to take anything from a public
+> repository — so a mistake here means your upload is ignored, not leaked, but
+> it does mean nobody gets it.
 
 ### The one rule: put it in the right folder
 
@@ -31,9 +48,10 @@ MP/exams/2024-enero.pdf
 two things the pipeline cannot work out for itself: **which course** the
 material belongs to, and **how authoritative** it is.
 
-A file dumped at the top level is not lost, but somebody has to sit and
-classify it by hand, which is the slow part. The folder takes you five seconds
-and saves that.
+The folders already exist in the template, so this costs you a click rather
+than any typing. A file left at the top level is refused and reported, not
+filed somewhere plausible — a guess about which course a book serves is a guess
+that ends up in somebody's citations.
 
 ### Course codes
 
@@ -103,25 +121,39 @@ Also on the MGP reading list. Chapters 1-12 only, the scan stops there.
 
 ### What not to upload
 
-- **Nothing under 20 pages of front matter.** Two entries in the ledger are
-  truncated preview PDFs that were marked as acquired; they are worse than an
-  honest gap, because the system reports coverage it does not have.
+- **Nothing under 20 pages.** Truncated previews and front matter are refused
+  automatically. Two entries in the ledger are already wrong this way, and a
+  book that is recorded but cannot answer anything is worse than an honest gap.
 - **Nothing you would not put in a private group folder.** This corpus is
   course material for one master's programme, held privately for the people
   studying it.
-- **Never make the repository public.** Not the inbox, not the derived
-  artifacts. The index counts too: embeddings can be inverted back towards
-  approximations of the text they were built from, so a public index of these
-  books is a weaker form of publishing the books. See
+- **Never make the repository public.** Not yours, not ours. The index counts
+  too: embeddings can be inverted back towards approximations of the text they
+  were built from, so a public index of these books is a weaker form of
+  publishing the books. See
   [ADR-0001](./docs/adr/0001-public-code-private-data.md).
 
 ### What happens next
 
-Whoever is maintaining the corpus runs the ingestion — the files are filed into
-`master_kb`, recorded in the course ledgers, converted, chunked, embedded and
-published. It costs about 25 minutes of GPU time plus conversion, so it happens
-in batches rather than per upload. Your material shows up in everyone's
-`rag search` after the next `rag pull`.
+A maintainer runs `rag inbox yourname/master_kb-inbox`. It **copies** what you
+offered — your repository is never depended on afterwards, so you can delete it
+whenever you like — records each book in its course's bibliography ledger, and
+reports anything it refused and why. Then conversion, chunking, embedding and
+publishing.
+
+That costs about 25 minutes of GPU time plus conversion, so it runs in batches
+rather than per upload. Your material appears in everyone's `rag search` after
+the next `rag pull`.
+
+Things that come back to you rather than going in:
+
+| | |
+| --- | --- |
+| The repository is public | Refused entirely, nothing is taken |
+| A file is at the top level | Refused — no course, no tier |
+| An unknown course code or kind | Refused rather than guessed |
+| Under 20 pages | Refused as front matter |
+| Somebody already added it | Skipped, by content hash — not a problem |
 
 If you want to run that yourself, see
 [docs/onboarding.md](./docs/onboarding.md).

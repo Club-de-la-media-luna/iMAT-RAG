@@ -78,7 +78,7 @@ class Hub(Protocol):
         """Download a revision of a repository into a local directory."""
 
 
-def _hub() -> Hub:
+def hub_client() -> Hub:
     """The real Hub client, imported late so that `rag paths` stays instant."""
     # pylint: disable=import-outside-toplevel
     from huggingface_hub import HfApi
@@ -112,7 +112,7 @@ def write_pointer(paths: Paths, pointer: Pointer) -> None:
 
 
 @contextmanager
-def _explained(repo_id: str) -> Iterator[None]:
+def explained(repo_id: str) -> Iterator[None]:
     """Turn a Hub refusal into the two things that actually cause it.
 
     A 401 or 403 here is almost never a bug: it is a read-only token, or an
@@ -152,8 +152,8 @@ def push(
             f"no manifest at {paths.manifest}; run `rag chunk` and `rag index` first"
         )
 
-    client = hub or _hub()
-    with _explained(repo_id):
+    client = hub or hub_client()
+    with explained(repo_id):
         client.create_repo(repo_id, repo_type=REPO_TYPE, private=True, exist_ok=True)
         info = client.repo_info(repo_id, repo_type=REPO_TYPE)
 
@@ -163,7 +163,7 @@ def push(
             "built from; make the repository private before publishing."
         )
 
-    with _explained(repo_id):
+    with explained(repo_id):
         commit = client.upload_folder(
             repo_id=repo_id,
             repo_type=REPO_TYPE,
@@ -195,9 +195,9 @@ def pull(
         revision=revision or (recorded.revision if recorded else "main"),
     )
 
-    client = hub or _hub()
+    client = hub or hub_client()
     paths.derived.mkdir(parents=True, exist_ok=True)
-    with _explained(wanted.repo_id):
+    with explained(wanted.repo_id):
         client.snapshot_download(
             repo_id=wanted.repo_id,
             repo_type=REPO_TYPE,

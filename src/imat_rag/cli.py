@@ -7,6 +7,9 @@ import typer
 from imat_rag import config
 from imat_rag.coverage import COURSE_NAMES
 from imat_rag.coverage import coverage as report_coverage
+from imat_rag.inbox import SourceRepoIsPublic
+from imat_rag.inbox import ingest as take_inbox
+from imat_rag.inbox import ingest_all as take_all_inboxes
 from imat_rag.index.search import build as build_index
 from imat_rag.index.search import search as run_search
 from imat_rag.ingest.catalogue import SourceTier, collect
@@ -238,6 +241,50 @@ def search(
         )
         body = hit.text if full else hit.text[:400].replace("\n", " ")
         typer.echo(f"    {body}{'' if full else ' ...'}")
+
+
+@app.command()
+def inbox(
+    repo: str = typer.Argument("", help="A contributor's repository, or all known"),
+) -> None:
+    """Take material from a contributor's repository into the corpus.
+
+    Files are copied, never referenced: the source belongs to somebody else's
+    account and may vanish. Nothing is guessed — a drop whose path does not say
+    which course and which tier it belongs to is reported, not filed.
+    """
+    resolved = _resolve()
+    try:
+        reports = [take_inbox(resolved, repo)] if repo else take_all_inboxes(resolved)
+    except (SourceRepoIsPublic, CannotReachHub) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not reports:
+        typer.secho(
+            "no source repositories registered; pass one to add it",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=1)
+
+    for report in reports:
+        typer.secho(f"\n{report.repo_id}", fg=typer.colors.CYAN)
+        for drop in report.accepted:
+            typer.echo(f"  + {drop.course}/{drop.kind:<7} {drop.filename}")
+        for drop in report.stored:
+            typer.echo(
+                f"  ~ {drop.course}/{drop.kind:<7} {drop.filename} (not indexed yet)"
+            )
+        for drop in report.duplicates:
+            typer.echo(f"  = {drop.filename} already in the corpus")
+        for refused in report.rejected:
+            typer.secho(f"  ! {refused.path}: {refused.reason}", fg=typer.colors.YELLOW)
+        typer.echo(
+            f"  {len(report.accepted)} taken, {len(report.stored)} stored, "
+            f"{len(report.duplicates)} already held, {len(report.rejected)} refused"
+        )
+
+    typer.echo("\nnow run `rag extract`, `rag chunk`, `rag index`, `rag push`")
 
 
 @app.command()

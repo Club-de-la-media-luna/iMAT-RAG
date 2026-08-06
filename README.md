@@ -67,6 +67,24 @@ Install the extras it needs with `uv sync --extra index --extra mcp`. The first
 `search` of a session loads BGE-M3 and takes ~15 s; every one after is instant,
 and `coverage` never loads it at all.
 
+## Taking in new material
+
+Contributors keep their own repository rather than joining the organisation:
+they duplicate the public
+[inbox template](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox-template),
+make it private, drop PDFs into `<COURSE>/<kind>/`, and share the name.
+
+```sh
+uv run rag inbox someone/master_kb-inbox   # take it, and register the source
+uv run rag inbox                           # re-take every registered source
+```
+
+It copies rather than references, writes the bibliography ledger entries, and
+refuses what it cannot place — public repositories, unknown course codes,
+files with no folder, front matter under 20 pages. See
+[CONTRIBUTING.md](./CONTRIBUTING.md) and
+[ADR-0007](./docs/adr/0007-contributor-owned-inbox-repositories.md).
+
 ## The artifacts
 
 `derived/` — extracted Markdown, figures, chunks and the index, ~414 MB — is

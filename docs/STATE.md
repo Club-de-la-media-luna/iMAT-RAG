@@ -61,6 +61,19 @@ content-addressed, and the content changed.
 Worth remembering: the corpus had a defect that twelve hours of extraction,
 39,036 chunks and a full index build did not surface. Publishing did.
 
+## Intake
+
+Contributors are not organisation members. Each duplicates the public, empty
+[template](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox-template)
+into their own account, keeps it private, drops PDFs into `<COURSE>/<kind>/`
+and grants a maintainer read access. `rag inbox <repo>` copies what is filed
+correctly, writes the bibliography ledger entries, and records the source in
+`sources.json`. It refuses public repositories, unknown courses and tiers,
+files with no folder, anything under 20 pages, and paths that climb out of the
+drop. See [ADR-0007](./adr/0007-contributor-owned-inbox-repositories.md) for
+why nobody is invited into the organisation — on the free tier, a shared inbox
+would require org-wide `write`, which includes deleting `master_kb-derived`.
+
 ## Then
 
 Reranker (only once it can be shown to help), `rag ask` via litellm,
@@ -80,6 +93,7 @@ uv run rag extract        # resumable; finished books are skipped
 uv run rag chunk          # re-chunk everything, refresh the manifest
 uv run rag index          # re-embed and rebuild (~25 min on the 3050)
 uv run rag push / pull    # the artifacts, to and from the Hub
+uv run rag inbox [repo]   # take a contributor's drop into the corpus
 ```
 
 ## Known issues, none blocking
@@ -96,12 +110,10 @@ uv run rag push / pull    # the artifacts, to and from the Hub
   pointer records `main`, which is a moving target rather than a pin. Resolving
   the revision to its sha after download would fix it; it only matters once
   more than one person is pushing.
-- **The inbox repository does not exist yet.** `CONTRIBUTING.md` tells
-  contributors to drag files into
-  `Club-de-la-media-luna/master_kb-inbox`, and `rag inbox` — which would file
-  them into the course directories and write the ledger entries — is not
-  written. Until both exist, material arrives by whatever route the group
-  improvises.
+- **No contributor has used the inbox yet.** The path is built and tested —
+  template repository, `rag inbox`, `CONTRIBUTING.md` — but it has never run
+  against a real contributor's repository, only against fakes. The first real
+  drop is the test.
 - **No evaluation harness**, by choice. Revisit when the reranker question
   becomes live — that decision is not settleable by spot-checking.
 - **No reranker**, by choice. Add only once it can be shown to help.
