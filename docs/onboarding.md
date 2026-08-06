@@ -50,6 +50,10 @@ About 414 MB. It reads `derived.json` in `master_kb` — which git tracks — an
 downloads exactly the revision recorded there, so everyone in the group is
 querying the same index rather than whichever build happens to be newest.
 
+The source PDFs stay on the Hub unless you ask for them: `rag pull --sources`
+adds another 1.1 GB and is only worth it if you intend to re-extract, which
+takes about twelve hours and produces what you just downloaded.
+
 ```sh
 uv run rag status         # what was extracted and chunked
 uv run rag coverage       # what each course has, and what it has not

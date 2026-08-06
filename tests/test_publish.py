@@ -73,7 +73,14 @@ def with_artifacts(paths: Paths) -> Paths:
     for name in ("bench", "blocks", "work"):
         (paths.derived / name).mkdir(parents=True, exist_ok=True)
         (paths.derived / name / "large").write_text("y" * 100)
+    literature = paths.literature("DRL")
+    literature.mkdir(parents=True, exist_ok=True)
+    (literature / "a-book.pdf").write_text("%PDF-1.4")
     return paths
+
+
+def patterns_of(hub: FakeHub) -> list[str]:
+    return [str(p) for p in hub.uploads[0]["allow_patterns"]]
 
 
 def test_pushing_creates_the_dataset_repository_private(tmp_path: Path) -> None:
@@ -103,11 +110,49 @@ def test_pushing_uploads_the_artifacts_and_nothing_else(tmp_path: Path) -> None:
 
     push(paths, hub=hub)
 
-    patterns = hub.uploads[0]["allow_patterns"]
-    assert Path(hub.uploads[0]["folder_path"]) == paths.derived
+    patterns = patterns_of(hub)
     for name in PUBLISHED:
-        assert any(pattern.startswith(name) for pattern in patterns), name
+        assert any(f"derived/{name}" in pattern for pattern in patterns), name
     assert not any("bench" in p or "blocks" in p or "work" in p for p in patterns)
+
+
+def test_the_repository_mirrors_the_knowledge_base_it_came_from(
+    tmp_path: Path,
+) -> None:
+    """One rule: the Hub holds exactly what git cannot, at the paths git uses.
+
+    Uploading from the root rather than from `derived/` is what makes a pulled
+    revision drop back into place, and what lets one sha describe both the
+    sources and the index built from them.
+    """
+    paths = with_artifacts(make_kb(tmp_path / "kb"))
+    hub = FakeHub()
+
+    push(paths, hub=hub)
+
+    assert Path(hub.uploads[0]["folder_path"]) == paths.kb_root
+    assert all(
+        p.startswith("derived/") or p.startswith("courses/") for p in patterns_of(hub)
+    )
+
+
+def test_pushing_carries_the_source_pdfs_too(tmp_path: Path) -> None:
+    """The books are the one thing a dead disk actually destroys."""
+    paths = with_artifacts(make_kb(tmp_path / "kb"))
+    hub = FakeHub()
+
+    push(paths, hub=hub)
+
+    assert any(p.endswith(".pdf") for p in patterns_of(hub))
+
+
+def test_pushing_can_leave_the_sources_alone(tmp_path: Path) -> None:
+    paths = with_artifacts(make_kb(tmp_path / "kb"))
+    hub = FakeHub()
+
+    push(paths, hub=hub, sources=False)
+
+    assert not any(p.endswith(".pdf") for p in patterns_of(hub))
 
 
 def test_pushing_refuses_a_public_repository(tmp_path: Path) -> None:
@@ -189,15 +234,35 @@ def test_a_failed_pull_records_no_pointer(tmp_path: Path) -> None:
     assert read_pointer(paths) is None
 
 
-def test_pulling_downloads_into_the_derived_directory(tmp_path: Path) -> None:
+def test_pulling_unpacks_into_the_knowledge_base_root(tmp_path: Path) -> None:
+    """The repository mirrors the kb, so a revision drops straight back in."""
     paths = make_kb(tmp_path / "kb")
     hub = FakeHub()
 
     pull(paths, hub=hub, repo_id=DEFAULT_REPO, revision="abc123")
 
-    assert Path(hub.downloads[0]["local_dir"]) == paths.derived
+    assert Path(hub.downloads[0]["local_dir"]) == paths.kb_root
     assert hub.downloads[0]["repo_type"] == "dataset"
     assert hub.downloads[0]["revision"] == "abc123"
+
+
+def test_pulling_leaves_the_source_pdfs_behind_by_default(tmp_path: Path) -> None:
+    """Somebody who only wants to search should not fetch 1.1 GB of books."""
+    paths = make_kb(tmp_path / "kb")
+    hub = FakeHub()
+
+    pull(paths, hub=hub)
+
+    assert not any(str(p).endswith(".pdf") for p in hub.downloads[0]["allow_patterns"])
+
+
+def test_pulling_can_ask_for_the_sources_as_well(tmp_path: Path) -> None:
+    paths = make_kb(tmp_path / "kb")
+    hub = FakeHub()
+
+    pull(paths, hub=hub, sources=True)
+
+    assert any(str(p).endswith(".pdf") for p in hub.downloads[0]["allow_patterns"])
 
 
 def test_pulling_follows_the_recorded_revision_by_default(tmp_path: Path) -> None:

@@ -33,13 +33,23 @@ Three results that closed open risks:
 
 ## M8: published
 
-`Club-de-la-media-luna/master_kb-derived`, **private**, revision
-`02b759af7895e5647cc3f228c49bc5399b55302b` — 5,528 files: 21 chunk records,
-21 books of Markdown with their sidecars, 5,122 figures, 341 index files and
-the manifest. Verified by fetching files back from that revision and comparing
-bytes: identical.
+`Club-de-la-media-luna/master_kb`, **private**, revision `eb5e2c12`. One rule
+decides what goes up: **the repository holds exactly what git cannot**, at the
+paths git uses — `courses/<CODE>/raw/literature/*.pdf` and the five declared
+artifacts under `derived/`. Everything else in `master_kb` is small text git
+already carries, the *guías docentes* included.
 
-`derived/` is backed up. That took the whole of M0–M8 to become true.
+5,571 files: 43 acquired books (1.14 GB) and the 5,527 derived artifacts built
+from them. Verified by fetching a manifest, a chunk record and a 19 MB PDF back
+from that revision and comparing bytes: identical.
+
+The corpus is backed up — the books *and* the index. That took the whole of
+M0–M8 to become true.
+
+The first cut published `derived/` alone, under the name `master_kb-derived`,
+because that is how M8 was phrased here. It left the books backed up nowhere
+and left a revision unable to say which books produced it. Renamed and
+re-laid-out before anyone had pulled, which is the only moment that was free.
 
 **One thing left for a human**: `derived.json` is untracked in `master_kb`.
 Commit it — it is the pointer `rag pull` reads, and without it nobody can
@@ -92,7 +102,7 @@ uv run rag serve          # the MCP server, over stdio
 uv run rag extract        # resumable; finished books are skipped
 uv run rag chunk          # re-chunk everything, refresh the manifest
 uv run rag index          # re-embed and rebuild (~25 min on the 3050)
-uv run rag push / pull    # the artifacts, to and from the Hub
+uv run rag push / pull    # the corpus, to and from the Hub (--sources for PDFs)
 uv run rag inbox [repo]   # take a contributor's drop into the corpus
 ```
 

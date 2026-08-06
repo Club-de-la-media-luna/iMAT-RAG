@@ -292,11 +292,12 @@ def pull(
     revision: str = typer.Option(
         "", help="Pin an exact revision, or use the recorded one"
     ),
+    sources: bool = typer.Option(False, help="Also fetch the source PDFs (~1.1 GB)"),
 ) -> None:
-    """Download the corpus artifacts from the Hugging Face dataset repository."""
-    typer.echo("downloading artifacts (~414 MB on a first pull)...")
+    """Download the corpus from the Hugging Face dataset repository."""
+    typer.echo("downloading (~414 MB on a first pull, more with --sources)...")
     try:
-        pointer = pull_artifacts(_resolve(), revision=revision)
+        pointer = pull_artifacts(_resolve(), revision=revision, sources=sources)
     except CannotReachHub as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -306,10 +307,15 @@ def pull(
 @app.command()
 def push(
     message: str = typer.Option("", "--message", "-m", help="Commit message"),
+    sources: bool = typer.Option(True, help="Include the source PDFs"),
 ) -> None:
-    """Publish the corpus artifacts, and record the revision for the group."""
+    """Publish the corpus, and record the revision for the group.
+
+    Everything `master_kb` cannot keep in git goes up: the acquired PDFs and
+    the derived artifacts, at the paths the knowledge base uses.
+    """
     try:
-        pointer = push_artifacts(_resolve(), message=message)
+        pointer = push_artifacts(_resolve(), message=message, sources=sources)
     except (NothingToPublish, RepositoryIsPublic, CannotReachHub) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc

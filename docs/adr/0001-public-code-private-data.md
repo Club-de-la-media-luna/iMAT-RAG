@@ -25,6 +25,16 @@ creates a new revision rather than overwriting a shared folder.
 (git for the manifest, HF for the artifacts), and the manifest is what binds
 them.
 
+The dataset repository mirrors the knowledge base rather than holding the
+artifacts alone, under one rule: **it holds exactly what git cannot**, at the
+paths git uses. `.gitignore` names the acquired books and `derived/`; those two
+are what have no other home — the *guías docentes* are small enough that git
+already carries them, and so they stay out. Shipping only `derived/` — which is
+what the first implementation did — left 43 books and 1.14 GB backed up
+nowhere, and left a revision unable to say which books produced it. `rag pull`
+fetches the artifacts alone by default, because searching needs the index
+rather than the books.
+
 The **index is as private as the PDFs**, not merely large. Embeddings can be
 inverted to recover approximations of their source text, so shipping a vector
 store built from copyrighted textbooks is a weaker form of shipping the

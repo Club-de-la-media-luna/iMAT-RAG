@@ -85,17 +85,32 @@ files with no folder, front matter under 20 pages. See
 [CONTRIBUTING.md](./CONTRIBUTING.md) and
 [ADR-0007](./docs/adr/0007-contributor-owned-inbox-repositories.md).
 
-## The artifacts
+## The corpus on the Hub
 
-`derived/` — extracted Markdown, figures, chunks and the index, ~414 MB — is
-gitignored in `master_kb` and shipped through a private Hugging Face dataset
-repository instead.
+One rule decides what is published: **the dataset repository holds exactly what
+git cannot**, at the paths git uses.
+
+```
+Club-de-la-media-luna/master_kb   (private)
+  courses/<CODE>/raw/literature/*.pdf    the 43 acquired books, 1.14 GB
+  derived/extracted|chunks|figures|index, manifest.json   ~414 MB
+```
+
+`master_kb` gitignores exactly those two things — one book alone exceeds
+GitHub's file limit — so everything else there is small text git already
+carries, the *guías docentes* included. Mirroring the knowledge base rather than shipping `derived/` alone is
+what lets one revision be a complete statement: *these* sources, and the index
+built from them.
 
 ```sh
 uv run rag pull                 # the revision recorded in master_kb/derived.json
-uv run rag pull --revision abc  # or an exact one
+uv run rag pull --sources       # and the source PDFs, for re-extracting
+uv run rag pull --revision abc  # or an exact revision
 uv run rag push -m "..."        # publish, and record the revision it created
 ```
+
+`pull` leaves the PDFs behind by default: searching needs the index, not 1.1 GB
+of books nobody will open.
 
 `push` refuses to upload into a public repository. The index is as private as
 the PDFs it was built from — embeddings can be inverted back towards their

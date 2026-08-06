@@ -98,7 +98,7 @@ def test_pull_downloads_the_recorded_revision(
     monkeypatch.setattr(
         cli,
         "pull_artifacts",
-        lambda paths, revision: Pointer(
+        lambda paths, revision, sources: Pointer(
             repo_id="org/data", revision=revision or "main"
         ),
     )
@@ -110,6 +110,26 @@ def test_pull_downloads_the_recorded_revision(
     assert "main" in result.output
 
 
+def test_pull_leaves_the_sources_alone_unless_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """414 MB is the ordinary pull; the books are an explicit extra."""
+    monkeypatch.setenv(config.ENV_VAR, str(make_kb(tmp_path / "kb")))
+    asked: list[bool] = []
+    monkeypatch.setattr(
+        cli,
+        "pull_artifacts",
+        lambda paths, revision, sources: (
+            asked.append(sources) or Pointer(repo_id="org/data", revision="r")
+        ),
+    )
+
+    runner.invoke(app, ["pull"])
+    runner.invoke(app, ["pull", "--sources"])
+
+    assert asked == [False, True]
+
+
 def test_pull_accepts_an_explicit_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -118,7 +138,7 @@ def test_pull_accepts_an_explicit_revision(
     monkeypatch.setattr(
         cli,
         "pull_artifacts",
-        lambda paths, revision: (
+        lambda paths, revision, sources: (
             asked.append(revision) or Pointer(repo_id="org/data", revision=revision)
         ),
     )
@@ -134,7 +154,7 @@ def test_pull_explains_a_hub_refusal_rather_than_raising(
 ) -> None:
     monkeypatch.setenv(config.ENV_VAR, str(make_kb(tmp_path / "kb")))
 
-    def refuse(paths: object, revision: str) -> None:
+    def refuse(paths: object, revision: str, sources: bool) -> None:
         raise CannotReachHub("the Hub refused org/data: 401. Check your token.")
 
     monkeypatch.setattr(cli, "pull_artifacts", refuse)
@@ -152,7 +172,7 @@ def test_push_reports_the_revision_it_created(
     monkeypatch.setattr(
         cli,
         "push_artifacts",
-        lambda paths, message: Pointer(repo_id="org/data", revision="c0ffee"),
+        lambda paths, message, sources: Pointer(repo_id="org/data", revision="c0ffee"),
     )
 
     result = runner.invoke(app, ["push"])
@@ -166,7 +186,7 @@ def test_push_explains_itself_when_there_is_nothing_indexed(
 ) -> None:
     monkeypatch.setenv(config.ENV_VAR, str(make_kb(tmp_path / "kb")))
 
-    def refuse(paths: object, message: str) -> None:
+    def refuse(paths: object, message: str, sources: bool) -> None:
         raise NothingToPublish("no manifest; run `rag chunk` and `rag index` first")
 
     monkeypatch.setattr(cli, "push_artifacts", refuse)
