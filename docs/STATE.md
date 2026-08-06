@@ -51,10 +51,10 @@ because that is how M8 was phrased here. It left the books backed up nowhere
 and left a revision unable to say which books produced it. Renamed and
 re-laid-out before anyone had pulled, which is the only moment that was free.
 
-**One thing left for a human**: `derived.json` is untracked in `master_kb`.
-Commit it — it is the pointer `rag pull` reads, and without it nobody can
-follow this revision. (`master_kb#5`, which gitignores `derived/`, is still
-open; until it merges `git status` there also shows ~700 MB untracked.)
+`corpus.json` in `master_kb` records that revision and is committed, so the
+group follows it. The name says what it pins: since the repository carries the
+books as well as the artifacts, a revision describes the whole corpus, not just
+the derived half.
 
 ### What the first push taught us
 

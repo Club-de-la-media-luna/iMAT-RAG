@@ -46,9 +46,9 @@ search.
 uv run rag pull
 ```
 
-About 414 MB. It reads `derived.json` in `master_kb` — which git tracks — and
+About 414 MB. It reads `corpus.json` in `master_kb` — which git tracks — and
 downloads exactly the revision recorded there, so everyone in the group is
-querying the same index rather than whichever build happens to be newest.
+querying the same corpus rather than whichever build happens to be newest.
 
 The source PDFs stay on the Hub unless you ask for them: `rag pull --sources`
 adds another 1.1 GB and is only worth it if you intend to re-extract, which
@@ -157,7 +157,7 @@ uv run rag pull           # if anyone has pushed since you last synced
 uv run rag push -m "add the IM slides"
 ```
 
-Then commit the updated `derived.json` in `master_kb`. That pointer is what
+Then commit the updated `corpus.json` in `master_kb`. That pointer is what
 tells everyone else which revision to pull; without it your upload exists but
 nobody follows it.
 

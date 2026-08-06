@@ -103,7 +103,7 @@ what lets one revision be a complete statement: *these* sources, and the index
 built from them.
 
 ```sh
-uv run rag pull                 # the revision recorded in master_kb/derived.json
+uv run rag pull                 # the revision recorded in master_kb/corpus.json
 uv run rag pull --sources       # and the source PDFs, for re-extracting
 uv run rag pull --revision abc  # or an exact revision
 uv run rag push -m "..."        # publish, and record the revision it created

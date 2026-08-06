@@ -8,8 +8,8 @@ carries.
 
 Mirroring the knowledge base rather than uploading `derived/` on its own is
 what lets one revision be a complete statement: these sources, and the index
-built from them. A pointer at a bare index says nothing about what produced
-it. See [ADR-0001](../../docs/adr/0001-public-code-private-data.md).
+built from them. A revision naming a bare index says nothing about what
+produced it. See [ADR-0001](../../docs/adr/0001-public-code-private-data.md).
 
 The repository is private and is checked to be private before anything is
 uploaded. That is not caution about size: embeddings can be inverted towards
@@ -44,8 +44,13 @@ double the payload without making a single query answerable.
 SOURCES = "courses/*/raw/literature/*.pdf"
 """The acquired PDFs — the one part of the corpus a dead disk destroys."""
 
-POINTER_NAME = "derived.json"
-"""Where the revision is recorded, beside `derived/` and tracked by git."""
+POINTER_NAME = "corpus.json"
+"""Where the revision is recorded, beside the corpus and tracked by git.
+
+Named for what it pins rather than for one part of it: since the repository
+carries the acquired books as well as the artifacts built from them, a
+revision describes the whole corpus.
+"""
 
 
 class NothingToPublish(RuntimeError):
@@ -207,7 +212,7 @@ def pull(
     """Download a revision into the knowledge base, and record what was taken.
 
     With no revision, the recorded one is used: two people asking for "the
-    index" get the same index rather than whatever the tip happens to be.
+    corpus" get the same corpus rather than whatever the tip happens to be.
 
     The source PDFs are left behind unless asked for. Somebody who only wants
     to search needs the index, not 1.1 GB of books they will never open.

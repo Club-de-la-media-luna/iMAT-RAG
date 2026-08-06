@@ -1,4 +1,9 @@
 # This repository holds code only. Data lives in master_kb.
+
+# Agent worktrees live inside the repository they branch from, so without this
+# every isolated workspace shows up as untracked in the main checkout.
+.claude/worktrees/
+
 .venv/
 __pycache__/
 *.py[co]
