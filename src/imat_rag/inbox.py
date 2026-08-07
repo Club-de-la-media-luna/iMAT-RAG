@@ -139,11 +139,15 @@ def add_entry(ledger: str, heading: str, title: str, filename: str) -> str:
     """
     entry = f"### {title}\n- EN: ✅ `{filename}`\n"
     marker = f"## {heading}"
-    if marker not in ledger:
+    # Anchored to a line start: `### Bibliografía básica y sus fuentes` contains
+    # `## Bibliografía básica` as a substring, and splitting on that would cut
+    # inside an entry title and file the book under a heading that is not one.
+    found = re.search(rf"^{re.escape(marker)}\s*$", ledger, re.MULTILINE)
+    if not found:
         separator = "" if ledger.endswith("\n\n") else "\n"
         return f"{ledger}{separator}\n{marker}\n\n{entry}"
 
-    head, rest = ledger.split(marker, 1)
+    head, rest = ledger[: found.start()], ledger[found.end() :]
     following = rest.find("\n## ")
     if following == -1:
         return f"{head}{marker}{rest.rstrip()}\n\n{entry}"

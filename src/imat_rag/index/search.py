@@ -86,6 +86,11 @@ def build(
     chunks = list(all_chunks(paths))
     children = [c for c in chunks if not c.is_parent]
     parents = [c for c in chunks if c.is_parent]
+    # Nothing chunked yet, or pulled without artifacts. Writing an empty table
+    # raises out of the driver with a message about schemas, which says nothing
+    # about the actual problem: `rag chunk` has not been run.
+    if not children:
+        return 0, len(parents)
 
     db = lance.connect(paths.index)
     lance.write_table(db, lance.PARENTS, [lance.parent_row(c) for c in parents], True)
