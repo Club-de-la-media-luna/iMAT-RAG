@@ -225,11 +225,15 @@ def coverage() -> None:
                 fg=typer.colors.YELLOW,
             )
             continue
+        breakdown = ", ".join(
+            f"{count} {kind}" for kind, count in sorted(entry.by_kind.items())
+        )
         typer.echo(
             f"{entry.course:<4} {entry.name[:42]:<42} "
-            f"{entry.books:>2} books {entry.pages:>6} pages "
+            f"{entry.books:>3} sources {entry.pages:>6} pages "
             f"{entry.chunks:>6} chunks"
         )
+        typer.echo(f"{'':<47} {breakdown}")
 
 
 @app.command()
