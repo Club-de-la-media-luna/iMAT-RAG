@@ -43,6 +43,15 @@ ATOMIC_PREFIXES = ("$$", "|", "![", "<table", "```")
 CHILD_TOKENS = 350
 PARENT_TOKENS = 2000
 
+RUN_TOKENS = 800
+"""Parent size for material whose sections are slides rather than subsections.
+
+Measured on DRL Tema 5 after extraction: 51 sections, median 113 tokens, 5,542
+tokens for the whole deck. At 800 a parent gathers about six sections — one
+argument — and stays roughly seven times its children. The book setting of
+2000 would make each parent a third of the deck.
+"""
+
 
 def estimate_tokens(text: str) -> int:
     """Approximate token count for budgeting."""

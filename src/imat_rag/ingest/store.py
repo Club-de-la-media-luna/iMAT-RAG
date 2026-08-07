@@ -14,7 +14,14 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from imat_rag.config import Paths
-from imat_rag.ingest.chunk import CHILD_TOKENS, PARENT_TOKENS, Chunk, chunk_book
+from imat_rag.ingest.catalogue import SourceTier
+from imat_rag.ingest.chunk import (
+    CHILD_TOKENS,
+    PARENT_TOKENS,
+    RUN_TOKENS,
+    Chunk,
+    chunk_book,
+)
 from imat_rag.ingest.extract import BookMeta
 
 
@@ -23,6 +30,17 @@ class ChunkConfig(BaseModel, frozen=True):
 
     child_tokens: int = CHILD_TOKENS
     parent_tokens: int = PARENT_TOKENS
+    run_tokens: int = RUN_TOKENS
+    """Parent size for sources whose sections are slides. Books ignore it."""
+
+
+BOOK_TIERS = frozenset({int(SourceTier.EXTRA_BOOK), int(SourceTier.BASIC_BOOK)})
+"""Tiers whose sections are already parent-sized.
+
+A textbook subsection is an argument. Everything else taken into the corpus —
+decks, exam sheets, notes, assignments — is written a slide at a time, and
+needs consecutive sections gathered before a parent means anything.
+"""
 
 
 class BookChunks(BaseModel):
@@ -126,6 +144,7 @@ def chunk_extracted_book(
         book_title=meta.titles[0] if meta.titles else meta.slug,
         courses=meta.courses,
         source_tier=meta.tier,
+        run_tokens=0 if meta.tier in BOOK_TIERS else config.run_tokens,
     )
     write_chunks(paths, meta.slug, chunks)
 
