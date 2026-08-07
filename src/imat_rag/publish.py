@@ -41,17 +41,28 @@ Everything the pipeline declares as an artifact, and nothing else: `bench`,
 double the payload without making a single query answerable.
 """
 
-MATERIAL = ("pdf", "ipynb")
+MATERIAL = ("pdf", "ipynb", "md", "py", "csv", "pt", "png")
 """Extensions that are acquired material rather than something git should keep.
 
-Not `.txt`: those are the title sidecars, and not `.md`: those are ledgers.
-Both are small, ours, and diff usefully, so they belong in the repository.
+Everything under `raw/` travels this way, whatever shape it arrived in: decks,
+notebooks, the Markdown some material was written as, an exercise project's
+code, its data and its trained weights.
+
+Not `.txt`. Those are the title sidecars, which git tracks so that the
+repository still lists what the corpus holds even though it holds none of it.
+"""
+
+DEPTHS = (1, 2, 3, 4)
+"""How far below `raw/` material sits.
+
+One for the books in `literature/`, two for anything filed by kind and topic,
+and deeper for a project that arrived with its own directories.
 """
 
 SOURCES = tuple(
     f"courses/*/raw/{'*/' * depth}*.{suffix}"
     for suffix in MATERIAL
-    for depth in (1, 2)
+    for depth in DEPTHS
 )
 """The acquired files — the one part of the corpus a dead disk destroys.
 

@@ -161,8 +161,13 @@ def test_the_source_patterns_cover_every_kind_of_acquired_material() -> None:
     assert covered("courses/GI/raw/exams/tema-1/hoja1.pdf")
     assert covered("courses/MP/raw/notes/tema-1/inter-probabilistico.pdf")
     assert covered("courses/IM/raw/assignments/tema-4/12-unit-4-practica-docker.pdf")
-    # A notebook is acquired material as much as a deck is.
+    # A notebook is acquired material as much as a deck is, and so is the
+    # Markdown some material arrived as, and an exercise project's own code.
     assert covered("courses/MGP/raw/code/t3-flow-models/ffjord.ipynb")
+    assert covered("courses/IM/raw/exams/general/repaso-teoria.md")
+    assert covered("courses/GI/raw/code/tema-4-ejercicio-monte/train.py")
+    assert covered("courses/GI/raw/code/tema-4-ejercicio-monte/data/trees.csv")
+    assert covered("courses/GI/raw/code/tema-4-ejercicio-monte/topo_model.pt")
     # Ours, small, and describes everything else; the Hub holds what git cannot.
     assert not covered("courses/MGP/raw/guide.pdf")
     # Sidecars and ledgers are text, and git keeps them.
