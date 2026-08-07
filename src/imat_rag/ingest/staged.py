@@ -74,12 +74,22 @@ def slug_for(relative: str) -> str:
     """A corpus-wide unique name, built from where the file sits.
 
     `courses/GI/raw/exams/tema-1/hoja1.pdf` becomes `gi-exams-tema-1-hoja1`:
-    course, kind, topic and stem, with `raw` dropped as it says nothing.
+    every directory below `courses/`, with `raw` dropped as it says nothing,
+    and the filename without its extension.
+
+    Every component, not a fixed three. Material does not have to be flat —
+    an exercise arrives with its own directory tree — and reading positions
+    by index made `code/t3/a/fig.pdf` and `code/t3/b/fig.pdf` the same slug,
+    so one silently overwrote the other's extracted Markdown. That is the
+    exact loss this scheme exists to prevent.
     """
-    parts = Path(relative).parts
-    course, kind, topic = parts[1], parts[3], parts[4]
-    stem = Path(parts[-1]).stem
-    return "-".join(part.lower() for part in (course, kind, topic, stem))
+    parts = [part for part in Path(relative).parts if part != "raw"]
+    if parts and parts[0] == "courses":
+        parts = parts[1:]
+    if not parts:
+        return ""
+    named = [*parts[:-1], Path(parts[-1]).stem]
+    return "-".join(part.lower() for part in named if part)
 
 
 def collect_staged(

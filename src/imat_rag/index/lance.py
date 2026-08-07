@@ -8,6 +8,7 @@ work and wasted disk.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -88,13 +89,25 @@ def build_fts(table: Any) -> None:
     table.create_fts_index(TEXT_FIELD, replace=True)
 
 
+UNSAFE_IN_COURSE = re.compile(r"[^A-Za-z0-9_-]")
+"""Everything a course code cannot contain.
+
+Course codes are short and alphanumeric. The MCP `search` tool hands this
+string through from a host agent, so it reaches a SQL predicate having been
+checked by nobody: a bare quote produced a malformed filter, and
+`x' OR '1'='1` scoped the search to everything. Stripping rather than
+rejecting keeps the failure quiet and correct — a course nobody has matches
+nothing, which is the honest answer to a course that does not exist.
+"""
+
+
 def course_filter(course: str) -> str:
     """SQL predicate scoping a search to one course.
 
     Stored as a comma-joined string rather than a list, because a book belongs
     to several courses and LanceDB filters strings far more simply than arrays.
     """
-    return f"courses LIKE '%{course}%'"
+    return f"courses LIKE '%{UNSAFE_IN_COURSE.sub('', course)}%'"
 
 
 def search_children(
