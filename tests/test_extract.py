@@ -137,6 +137,23 @@ def test_no_output_returns_none(tmp_path: Path) -> None:
     assert find_output(tmp_path, "book") is None
 
 
+def test_output_is_found_when_mineru_named_it_after_the_file_not_the_slug(
+    tmp_path: Path,
+) -> None:
+    """Staged material's slug says where it sits, which is not what it is called.
+
+    A book's slug is its filename, so the two agreed and this never showed. A
+    deck filed as `courses/DRL/raw/slides/tema-1/1-repasorl-1a.pdf` has the slug
+    `drl-slides-tema-1-1-repasorl`, and mineru names its output for the file.
+    """
+    nested = tmp_path / "auto"
+    nested.mkdir(parents=True)
+    target = nested / "1-repasorl-1a_content_list.json"
+    target.write_text("[]")
+
+    assert find_output(tmp_path, "drl-slides-tema-1-1-repasorl") == target
+
+
 # --- figures ----------------------------------------------------------------
 
 

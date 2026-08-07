@@ -146,9 +146,17 @@ def mineru_argv(pdf: Path, out_dir: Path, config: ExtractConfig) -> list[str]:
 
 
 def find_output(work_dir: Path, slug: str) -> Path | None:
-    """Locate mineru's content_list.json, wherever it nested it."""
-    matches = sorted(work_dir.rglob(f"{slug}_content_list.json"))
-    return matches[0] if matches else None
+    """Locate mineru's content_list.json, wherever it nested it.
+
+    mineru names its output after the input file. For a book that is the slug,
+    because a book's slug is its filename; for staged material the slug says
+    where the file sits rather than what it is called, and the two differ. The
+    working directory is created fresh per source and holds exactly one run, so
+    falling back to whatever content list is in there is safe and is what makes
+    the name irrelevant.
+    """
+    named = sorted(work_dir.rglob(f"{slug}_content_list.json"))
+    return (named or sorted(work_dir.rglob("*_content_list.json")) or [None])[0]
 
 
 def copy_figures(

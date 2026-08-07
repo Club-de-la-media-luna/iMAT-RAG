@@ -194,6 +194,57 @@ def _pack(pieces: Sequence[Piece], budget: int) -> Iterator[list[Piece]]:
         yield current
 
 
+def merge_runs(sections: Sequence[Section], budget: int) -> list[Section]:
+    """Gather consecutive sections into runs of roughly `budget` tokens.
+
+    A book's section is a chapter subsection and already the right size to be a
+    parent. A deck's section is one slide — forty tokens, sometimes eleven — and
+    a parent that size expands to nothing, which defeats the point of having
+    parents at all. Merging first gives the reader the surrounding argument.
+
+    Runs are named for where they start. What tells a reader they are looking
+    at a span rather than a single slide is the page range on the citation.
+    """
+    return [_joined(run) for run in _runs_of(sections, budget)]
+
+
+def _joined(sections: Sequence[Section]) -> Section:
+    """One section covering everything its parts covered."""
+    if len(sections) == 1:
+        return sections[0]
+    return Section(
+        breadcrumb=sections[0].breadcrumb,
+        pieces=tuple(piece for section in sections for piece in section.pieces),
+    )
+
+
+def chunk_run(
+    sections: Sequence[Section],
+    book_slug: str,
+    child_tokens: int = CHILD_TOKENS,
+) -> list[Chunk]:
+    """One parent spanning several sections, with a child per section.
+
+    The child stays the unit that matched. Packing slides together into a
+    child would blur which one the query actually hit, and the child is the
+    only thing the index ever compares against.
+    """
+    run = _joined(sections)
+    parent = _make_chunk(run.pieces, run.breadcrumb, book_slug, is_parent=True)
+    chunks = [parent]
+    for section in sections:
+        chunks.extend(
+            _make_chunk(
+                child_pieces,
+                section.breadcrumb,
+                book_slug,
+                parent_id=parent.chunk_id,
+            )
+            for child_pieces in _pack(section.pieces, child_tokens)
+        )
+    return chunks
+
+
 def chunk_section(
     section: Section,
     book_slug: str,
@@ -245,20 +296,46 @@ def _make_chunk(
     )
 
 
-def chunk_book(
+def chunk_book(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     markdown: str,
     book_slug: str,
     book_title: str = "",
     courses: tuple[str, ...] = (),
     source_tier: int = 0,
+    run_tokens: int = 0,
 ) -> list[Chunk]:
-    """Chunk one extracted book."""
-    chunks: list[Chunk] = []
-    for section in split_sections(markdown, book_title):
-        for chunk in chunk_section(section, book_slug):
-            chunks.append(
-                chunk.model_copy(
-                    update={"courses": courses, "source_tier": source_tier}
-                )
-            )
-    return chunks
+    """Chunk one extracted source.
+
+    `run_tokens` switches on the slide path: consecutive sections are gathered
+    into a parent of about that size, each section becoming one child. Left at
+    zero, every section is its own parent, which is what a book wants and what
+    the forty-three already in the index were built with.
+    """
+    sections = split_sections(markdown, book_title)
+    produced: list[Chunk] = []
+    if run_tokens:
+        for run in _runs_of(sections, run_tokens):
+            produced.extend(chunk_run(run, book_slug))
+    else:
+        for section in sections:
+            produced.extend(chunk_section(section, book_slug))
+
+    return [
+        chunk.model_copy(update={"courses": courses, "source_tier": source_tier})
+        for chunk in produced
+    ]
+
+
+def _runs_of(sections: Sequence[Section], budget: int) -> Iterator[list[Section]]:
+    """The same grouping `merge_runs` does, kept as its parts."""
+    current: list[Section] = []
+    used = 0
+    for section in sections:
+        cost = estimate_tokens(section.text)
+        if current and used + cost > budget:
+            yield current
+            current, used = [], 0
+        current.append(section)
+        used += cost
+    if current:
+        yield current
