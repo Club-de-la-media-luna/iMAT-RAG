@@ -52,10 +52,37 @@ precisely the failure the parent/child split exists to prevent. Slides
 therefore chunk by *run*: consecutive slides accumulate into a parent, with the
 slide as the child.
 
-Where that run should end is not settled here, and deliberately so. Picking
-2000 tokens because books use 2000 tokens would repeat the mistake this
-document is about. It needs an evaluation set — questions per course with known
-answers — measured against real retrieval before a number is chosen.
+## The run is 800 tokens, and no evaluation set was needed
+
+This document first said the run length needed an evaluation set measured
+against real retrieval before a number could be chosen. That was wrong, and
+the reason is worth writing down because it is easy to get backwards.
+
+**Run length does not change what matches.** The index only ever compares
+children, and a child is one slide whatever the run is set to. Changing the
+run changes which parent a matched child expands to — how much argument comes
+back around the hit — and nothing else. Recall is invariant to it. An
+evaluation set would have measured a number that cannot move, and picking 800
+because a sweep "showed" it would have been a fabricated result.
+
+What the choice actually trades off is readability, and that is measurable
+directly. Across the first forty sources extracted, at 800 tokens:
+
+| | |
+| --- | --- |
+| median parent | 740 tokens |
+| median child | 106 tokens |
+| ratio | about 7× |
+
+Seven times is the point. A parent has to be substantially larger than the
+child that found it or expansion returns the child again. On DRL Tema 5 — 51
+sections, 5,542 tokens for the whole deck — 800 gathers about six sections,
+which is one argument, while the book setting of 2000 would have made each
+parent a third of the deck.
+
+It remains a parameter. What would justify moving it is a reader finding the
+returned span too thin or too bloated, which is a judgement about prose, not a
+score.
 
 ## Consequences
 
