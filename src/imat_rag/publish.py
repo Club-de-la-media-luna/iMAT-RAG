@@ -41,8 +41,19 @@ Everything the pipeline declares as an artifact, and nothing else: `bench`,
 double the payload without making a single query answerable.
 """
 
-SOURCES = ("courses/*/raw/*/*.pdf", "courses/*/raw/*/*/*.pdf")
-"""The acquired PDFs — the one part of the corpus a dead disk destroys.
+MATERIAL = ("pdf", "ipynb")
+"""Extensions that are acquired material rather than something git should keep.
+
+Not `.txt`: those are the title sidecars, and not `.md`: those are ledgers.
+Both are small, ours, and diff usefully, so they belong in the repository.
+"""
+
+SOURCES = tuple(
+    f"courses/*/raw/{'*/' * depth}*.{suffix}"
+    for suffix in MATERIAL
+    for depth in (1, 2)
+)
+"""The acquired files — the one part of the corpus a dead disk destroys.
 
 Every kind, not just the books: a lecture deck is no more recoverable than a
 textbook, and less, since nobody sells it. Two depths, because the books sit
@@ -50,7 +61,7 @@ directly under `literature/` while everything taken from a drop is filed by
 topic underneath its kind.
 
 The course guides sit directly in `raw/`, shallower than either, and so fall
-outside both on purpose — they are ours, they are small, and git has them.
+outside on purpose — they are ours, they are small, and git has them.
 """
 
 POINTER_NAME = "corpus.json"

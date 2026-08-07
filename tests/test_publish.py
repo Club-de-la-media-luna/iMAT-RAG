@@ -161,8 +161,12 @@ def test_the_source_patterns_cover_every_kind_of_acquired_material() -> None:
     assert covered("courses/GI/raw/exams/tema-1/hoja1.pdf")
     assert covered("courses/MP/raw/notes/tema-1/inter-probabilistico.pdf")
     assert covered("courses/IM/raw/assignments/tema-4/12-unit-4-practica-docker.pdf")
+    # A notebook is acquired material as much as a deck is.
+    assert covered("courses/MGP/raw/code/t3-flow-models/ffjord.ipynb")
     # Ours, small, and describes everything else; the Hub holds what git cannot.
     assert not covered("courses/MGP/raw/guide.pdf")
+    # Sidecars and ledgers are text, and git keeps them.
+    assert not covered("courses/MGP/raw/code/t3-flow-models/ffjord.txt")
 
 
 def test_pushing_can_leave_the_sources_alone(tmp_path: Path) -> None:
