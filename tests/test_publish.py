@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from imat_rag.publish import (
     NothingToPublish,
     Pointer,
     RepositoryIsPublic,
+    patterns,
     pull,
     push,
     read_pointer,
@@ -144,6 +146,23 @@ def test_pushing_carries_the_source_pdfs_too(tmp_path: Path) -> None:
     push(paths, hub=hub)
 
     assert any(p.endswith(".pdf") for p in patterns_of(hub))
+
+
+def test_the_source_patterns_cover_every_kind_of_acquired_material() -> None:
+    """A lecture deck is as unbacked as a book. Only the guides live in git."""
+    globs = patterns(sources=True)
+
+    def covered(path: str) -> bool:
+        return any(fnmatch(path, glob) for glob in globs)
+
+    assert covered("courses/IAP/raw/literature/bishop-2006.pdf")
+    # Everything taken from a drop is filed by topic, a level deeper than a book.
+    assert covered("courses/DRL/raw/slides/tema-2/representationlearning-1a.pdf")
+    assert covered("courses/GI/raw/exams/tema-1/hoja1.pdf")
+    assert covered("courses/MP/raw/notes/tema-1/inter-probabilistico.pdf")
+    assert covered("courses/IM/raw/assignments/tema-4/12-unit-4-practica-docker.pdf")
+    # Ours, small, and describes everything else; the Hub holds what git cannot.
+    assert not covered("courses/MGP/raw/guide.pdf")
 
 
 def test_pushing_can_leave_the_sources_alone(tmp_path: Path) -> None:
