@@ -121,9 +121,11 @@ Also on the MGP reading list. Chapters 1-12 only, the scan stops there.
 
 ### What not to upload
 
-- **Nothing under 20 pages.** Truncated previews and front matter are refused
+- **No book under 20 pages.** Truncated previews and front matter are refused
   automatically. Two entries in the ledger are already wrong this way, and a
   book that is recorded but cannot answer anything is worse than an honest gap.
+  This applies to `basic/` and `extra/` only — a lecture deck, an exam sheet or
+  a problem set is legitimately four pages, and most of them are.
 - **Nothing you would not put in a private group folder.** This corpus is
   course material for one master's programme, held privately for the people
   studying it.
@@ -152,7 +154,8 @@ Things that come back to you rather than going in:
 | The repository is public | Refused entirely, nothing is taken |
 | A file is at the top level | Refused — no course, no tier |
 | An unknown course code or kind | Refused rather than guessed |
-| Under 20 pages | Refused as front matter |
+| A **book** under 20 pages | Refused as front matter; other kinds are kept |
+| A file that will not open | Refused, and the rest of the drop still lands |
 | Somebody already added it | Skipped, by content hash — not a problem |
 
 If you want to run that yourself, see

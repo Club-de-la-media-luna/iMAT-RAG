@@ -163,11 +163,18 @@ def _digest(path: Path) -> str:
 
 
 def _held_already(paths: Paths) -> set[str]:
-    """Hashes of every PDF already in the corpus, for whatever course."""
+    """Hashes of every PDF already in the corpus, for whatever course.
+
+    All of `raw/`, not only `literature/`. Stored kinds live beside it, and
+    missing them meant every re-run re-copied the same decks and reported them
+    as newly taken.
+    """
     held: set[str] = set()
     for course in COURSE_NAMES:
-        for existing in paths.literature(course).glob("*.pdf"):
-            held.add(_digest(existing))
+        raw = paths.courses / course / "raw"
+        if not raw.is_dir():
+            continue
+        held.update(_digest(existing) for existing in raw.rglob("*.pdf"))
     return held
 
 
@@ -287,10 +294,26 @@ def _take(
         digest = _digest(staged)
         if digest in held:
             report.duplicates.append(drop)
+            # Held, but perhaps by another course. Murphy is listed by IAP and
+            # by MGP; skipping the copy is right, skipping the second course's
+            # ledger entry loses that course a book it is meant to have.
+            _record(paths, drop)
             continue
 
-        counted = pages(staged)
-        if counted < MINIMUM_PAGES:
+        # Always opened, so a corrupt file is caught here rather than hours
+        # later in extraction — but one bad file must not abandon the drop.
+        try:
+            counted = pages(staged)
+        except Exception as exc:  # noqa: BLE001  pylint: disable=broad-except
+            report.rejected.append(
+                Rejected(path=relative, reason=f"cannot be read: {exc}")
+            )
+            continue
+
+        # The floor exists to catch truncated book previews marked as acquired.
+        # A deck or an exam sheet is legitimately four pages, and applying the
+        # floor to them rejected most of what a course actually sets.
+        if drop.heading and counted < MINIMUM_PAGES:
             report.rejected.append(
                 Rejected(
                     path=relative,
@@ -308,14 +331,27 @@ def _take(
             report.stored.append(drop)
             continue
 
-        ledger = paths.ledger(drop.course)
-        existing = ledger.read_text(encoding="utf-8") if ledger.is_file() else ""
-        ledger.parent.mkdir(parents=True, exist_ok=True)
-        ledger.write_text(
-            add_entry(existing, drop.heading, drop.title, drop.filename),
-            encoding="utf-8",
-        )
+        _record(paths, drop)
         report.accepted.append(drop)
+
+
+def _record(paths: Paths, drop: Drop) -> None:
+    """Write one bibliography entry, unless the ledger already carries it.
+
+    Idempotent because `rag inbox` is meant to be safe to re-run: a second pass
+    over the same repository must not leave the ledger listing a book twice.
+    """
+    if not drop.heading:
+        return
+    ledger = paths.ledger(drop.course)
+    existing = ledger.read_text(encoding="utf-8") if ledger.is_file() else ""
+    if f"`{drop.filename}`" in existing:
+        return
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(
+        add_entry(existing, drop.heading, drop.title, drop.filename),
+        encoding="utf-8",
+    )
 
 
 def ingest_all(
