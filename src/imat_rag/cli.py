@@ -12,8 +12,10 @@ from imat_rag.inbox import ingest as take_inbox
 from imat_rag.inbox import ingest_all as take_all_inboxes
 from imat_rag.index.search import build as build_index
 from imat_rag.index.search import search as run_search
-from imat_rag.ingest.catalogue import SourceTier, collect
+from imat_rag.ingest.catalogue import Book, SourceTier, collect
 from imat_rag.ingest.extract import ExtractConfig, describe, extract_book
+from imat_rag.ingest.staged import TIERS as STAGED_KINDS
+from imat_rag.ingest.staged import collect_staged
 from imat_rag.ingest.store import (
     ChunkConfig,
     Manifest,
@@ -41,6 +43,35 @@ def main() -> None:
     command taking no subcommand name. This callback keeps ``rag <command>``
     working.
     """
+
+
+_TIER_HELP = "basic, extra, staged, or one kind: " + ", ".join(STAGED_KINDS)
+
+LEDGER_TIERS = {"basic": SourceTier.BASIC_BOOK, "extra": SourceTier.EXTRA_BOOK}
+"""Tiers the bibliography ledgers describe. Everything else comes from intake."""
+
+
+def _queue(resolved: config.Paths, tier: str) -> list[Book]:
+    """The sources one `--tier` names, from whichever authority knows them.
+
+    Books come from the ledgers, which is where a bibliography lives. Decks,
+    exams and the rest come from `intake.json`, because no bibliography has a
+    section for the slides of its own course.
+    """
+    if tier in LEDGER_TIERS:
+        return collect(resolved, LEDGER_TIERS[tier])
+    if tier == "staged":
+        return collect_staged(resolved)
+    if tier not in STAGED_KINDS:
+        # Silence here would read as "no material", which is a different and
+        # much more alarming answer than "you have misspelled the tier".
+        message = (
+            f"{tier!r} is not a tier; expected basic, extra, staged, "
+            f"or one of {', '.join(STAGED_KINDS)}"
+        )
+        typer.secho(message, fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    return collect_staged(resolved, kinds=(tier,))
 
 
 def _resolve() -> config.Paths:
@@ -79,13 +110,12 @@ def courses() -> None:
 
 @app.command()
 def books(
-    tier: str = typer.Option("basic", help="basic or extra"),
+    tier: str = typer.Option("basic", help=_TIER_HELP),
     probe: bool = typer.Option(False, help="Open each PDF to report pages and tier"),
 ) -> None:
-    """List the corpus as the ledgers describe it."""
+    """List the corpus, as the ledgers and the intake record describe it."""
     resolved = _resolve()
-    wanted = SourceTier.BASIC_BOOK if tier == "basic" else SourceTier.EXTRA_BOOK
-    found = collect(resolved, wanted)
+    found = _queue(resolved, tier)
 
     for book in found:
         detail = ""
@@ -102,13 +132,12 @@ def books(
 def extract(
     slug: str = typer.Option("", help="Extract only this book"),
     limit: int = typer.Option(0, help="Stop after this many books (0 = all)"),
-    tier: str = typer.Option("basic", help="basic or extra"),
+    tier: str = typer.Option("basic", help=_TIER_HELP),
     timeout: int = typer.Option(14400, help="Per-book timeout in seconds"),
 ) -> None:
-    """Convert books to Markdown. Safe to re-run: finished books are skipped."""
+    """Convert sources to Markdown. Safe to re-run: finished ones are skipped."""
     resolved = _resolve()
-    wanted = SourceTier.BASIC_BOOK if tier == "basic" else SourceTier.EXTRA_BOOK
-    queue = [b for b in collect(resolved, wanted) if not slug or b.slug == slug]
+    queue = [b for b in _queue(resolved, tier) if not slug or b.slug == slug]
     if limit:
         queue = queue[:limit]
     if not queue:

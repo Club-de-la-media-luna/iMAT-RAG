@@ -29,16 +29,28 @@ ACQUIRED = "✅"
 class SourceTier(IntEnum):
     """How authoritative a source is about what is actually examined.
 
-    Ordinal on purpose: higher wins when the corpus disagrees with itself. Only
-    `BASIC_BOOK` is indexed in v1; the rest exist so that adding them later is
-    an append rather than a re-ingest.
+    Ordinal on purpose: higher wins when the corpus disagrees with itself. A
+    textbook is right about the subject; a lecturer's deck is right about the
+    course, which is the question being asked here.
+
+    `NOTES` sits below the books deliberately. It holds material a student
+    wrote — summaries, cheat sheets, a log of commands that worked — which is
+    often the clearest thing in the corpus and the least reliable. Retrieval
+    must never let it cite as confidently as the deck it was made from.
+
+    The rungs above `SLIDES` are provisional: nothing ranks on this field yet,
+    it is carried on every chunk so that ranking can be added without a
+    re-ingest.
     """
 
+    NOTES = 0
     EXTRA_BOOK = 1
     BASIC_BOOK = 2
     GUIDE = 3
     EXAM = 4
     SLIDES = 5
+    ASSIGNMENT = 6
+    CODE = 7
 
 
 def _section_to_tier(heading: str) -> SourceTier | None:
