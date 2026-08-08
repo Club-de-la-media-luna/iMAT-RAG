@@ -41,6 +41,17 @@ written — claiming coverage the pipeline does not have is worse than a gap."""
 
 KINDS = (*HEADINGS, *STORED_KINDS)
 
+FORGEABLE = re.compile(r"[`\r\n\x00-\x1f]")
+"""Characters that let a name escape the ledger entry it is written into.
+
+An entry is `- EN: ✅ \\`name\\`` in Markdown. A newline closes it and starts
+another; a backtick closes the path early. Either lets a contributor write a
+bibliography entry of their choosing — and `catalogue.collect` reads that
+ledger to decide what is extracted and indexed, so a forged entry is not
+merely cosmetic. Names are refused rather than escaped: no legitimate
+filename in this corpus contains them, and a rejected drop is reported.
+"""
+
 MINIMUM_PAGES = 20
 """Below this a PDF is front matter, not a book.
 
@@ -97,7 +108,7 @@ class Report(BaseModel):
         )
 
 
-def parse_drop(path: str) -> Drop | Rejected:
+def parse_drop(path: str) -> Drop | Rejected:  # pylint: disable=too-many-return-statements
     """Read `<COURSE>/<kind>/<file>.pdf`, or say why it cannot be read.
 
     Deliberately strict. The tree comes from a repository this organisation
@@ -120,6 +131,10 @@ def parse_drop(path: str) -> Drop | Rejected:
         return Rejected(path=path, reason=f"{kind} is not one of {', '.join(KINDS)}")
     if not filename.lower().endswith(".pdf"):
         return Rejected(path=path, reason="only PDFs are taken")
+    if FORGEABLE.search(filename):
+        return Rejected(
+            path=path, reason="the filename contains characters a ledger cannot hold"
+        )
 
     return Drop(course=course, kind=kind, filename=filename)
 
@@ -137,7 +152,9 @@ def add_entry(ledger: str, heading: str, title: str, filename: str) -> str:
     silently losing its entry is the failure this whole command exists to
     prevent.
     """
-    entry = f"### {title}\n- EN: ✅ `{filename}`\n"
+    # The title arrives from a sidecar the contributor wrote, so it is capable
+    # of the same forgery as the filename and is flattened to one line.
+    entry = f"### {FORGEABLE.sub(' ', title).strip()}\n- EN: ✅ `{filename}`\n"
     marker = f"## {heading}"
     # Anchored to a line start: `### Bibliografía básica y sus fuentes` contains
     # `## Bibliografía básica` as a substring, and splitting on that would cut
