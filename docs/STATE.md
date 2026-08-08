@@ -3,21 +3,39 @@
 Resume point for the next session. Read [CONTEXT.md](../CONTEXT.md) for
 vocabulary, [design.md](./design.md) for the shape, [adr/](./adr/) for why.
 
-Last updated after M8. Every milestone in the build order is done.
+Last updated after M9. Every milestone in the build order is done.
 
-## Done: M0 – M8
+## Done: M0 – M9
 
 The system works end to end, from the CLI and over MCP. `rag search` and the
-`search` tool return the same correctly cited passages from 21 books.
+`search` tool return the same correctly cited passages — now from the lecture
+material as well as the reading list, for all nine courses.
 
 | | |
 | --- | --- |
-| Corpus | 21 basic-tier books, 11,990 pages, 601 MB of PDFs |
-| Extracted | ~29.9M characters, complete page coverage on every book, 0 failures |
-| Chunked | 39,036 chunks — 10,890 parents, 28,146 children, 7.2M tokens |
-| Indexed | 28,146 children embedded with BGE-M3, 173 MB LanceDB, 2 tables |
-| Published | 5,528 files on the Hub, private, revision `02b759af` |
-| Tests | 181 passing, lint 10.00/10 |
+| Corpus | 211 sources: 21 books and 190 decks, exams, assignments and notes |
+| | 17,813 pages, 1.9 GB of PDFs |
+| Extracted | 190 staged sources extracted, 0 failures |
+| Chunked | 47,472 chunks — 12,073 parents, 35,399 children |
+| Indexed | 35,399 children embedded with BGE-M3, 212 MB LanceDB, 2 tables |
+| Published | 10,043 files on the Hub, private, revision `8e9980a1` |
+| Tests | 254 passing, lint 10.00/10 |
+
+Coverage, per course, after M9:
+
+| Course | Sources | Chunks | What it holds |
+| --- | --- | --- | --- |
+| DRL | 14 | 4,276 | 2 books, 9 decks, 3 notes |
+| EE | 18 | 1,349 | 13 decks, 4 exams, 1 assignment |
+| GI | 20 | 2,331 | 2 books, 6 decks, 9 exams, 2 notes, 1 assignment |
+| IAG | 17 | 1,170 | 1 book, 16 decks |
+| IAP | 25 | 17,685 | 4 books, 21 decks |
+| IM | 35 | 5,632 | 5 books, 14 decks, 15 assignments, 1 notes |
+| MD | 33 | 6,554 | 4 books, 27 decks, 1 assignment, 1 notes |
+| MGP | 31 | 13,018 | 3 books, 24 decks, 3 exams, 1 notes |
+| MP | 20 | 4,675 | 2 books, 14 decks, 3 exams, 1 notes |
+
+**EE had no material at all before M9.** It now answers.
 
 Three results that closed open risks:
 
@@ -30,6 +48,32 @@ Three results that closed open risks:
 - **The MCP server answers over real stdio.** Verified with an actual client:
   handshake, three tools listed, `coverage` reporting `EE` as the one course
   with no material. `fetch` costs 0.05 s on the real 39k-chunk corpus.
+
+## M9: the lecture material
+
+A colleague's `ARCHIVOS_MASTER` drop — 217 PDFs, 912 MB — filed into the tree
+the pipeline reads, and made searchable. 192 survived: 23 were byte-identical
+copies of each other, one was a cluster user guide, and two were replaced by
+the Markdown they had been printed from.
+
+Material is filed at `courses/<CODE>/raw/<kind>/<topic>/`, and the intake
+record `intake.json` is the second discovery authority beside the bibliography
+ledgers — a bibliography has no section for the slides of its own course.
+
+Three findings worth keeping:
+
+- **A deck is not a book, and the book chunker knew nothing about it.** mineru
+  returns about one heading per slide, and a slide is 46–144 tokens against a
+  `PARENT_TOKENS` of 2000. Every parent would have been a single slide, which
+  expands to itself. Slide-shaped sources now chunk by run: 800 tokens, giving
+  a median parent of 740 against a median child of 106. See ADR-0008.
+- **mineru names its output after the input file, not the slug.** Those agreed
+  for forty-three books because a book's slug *is* its filename. They do not
+  agree for staged material, and the first eight extractions failed on it.
+- **Retrieval is honest about near-duplicates.** Probing every source with its
+  own content, 209 of 211 come back. The two that do not are a student summary
+  outranked by the deck it summarises, and a draft outranked by its finished
+  version. That is the tier ladder working.
 
 ## M8: published
 
