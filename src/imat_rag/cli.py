@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from imat_rag import config
@@ -14,6 +16,9 @@ from imat_rag.index.search import build as build_index
 from imat_rag.index.search import search as run_search
 from imat_rag.ingest.catalogue import Book, SourceTier, collect
 from imat_rag.ingest.extract import ExtractConfig, describe, extract_book
+from imat_rag.ingest.stage import DEFAULT_STAGING
+from imat_rag.ingest.stage import sort_into as sort_inbox
+from imat_rag.ingest.stage import take as take_staged
 from imat_rag.ingest.staged import TIERS as STAGED_KINDS
 from imat_rag.ingest.staged import collect_staged
 from imat_rag.ingest.store import (
@@ -318,6 +323,87 @@ def inbox(
         )
 
     typer.echo("\nnow run `rag extract`, `rag chunk`, `rag index`, `rag push`")
+
+
+@app.command()
+def stage(
+    inbox_dir: str = typer.Argument(..., help="A flat directory of downloads"),
+    into: str = typer.Option("", "--into", help="Where the sorted tree is built"),
+) -> None:
+    """Sort a flat drop of downloads into the tree the pipeline reads.
+
+    Moodle gives one PDF at a time and no structure, so the name is the whole
+    address: `<course>_<kind>_<topic>_<title>.pdf`. Nothing is guessed. A file
+    named without its kind is left in the inbox and reported, because a
+    guessed kind is a guessed tier and the tier decides which source wins.
+
+    This touches no corpus. `rag take` is the step that does.
+    """
+    source = Path(inbox_dir)
+    if not source.is_dir():
+        typer.secho(f"{source} is not a directory", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    staging = Path(into) if into else _resolve().kb_root / DEFAULT_STAGING
+    report = sort_inbox(source, staging)
+
+    for named in report.sorted:
+        typer.echo(f"  + {named.course}/{named.kind:<11} {named.topic}/{named.stem}")
+    for named in report.already:
+        typer.echo(f"  = {named.stem} already staged")
+    for refused in report.unreadable:
+        typer.secho(f"  ! {refused.filename}: {refused.reason}", fg=typer.colors.YELLOW)
+
+    typer.echo(
+        f"\n{len(report.sorted)} staged, {len(report.already)} already there, "
+        f"{len(report.unreadable)} left to rename"
+    )
+    typer.echo(f"staging tree: {staging}")
+    if report.unreadable:
+        typer.echo("rename those in place, then run `rag stage` again")
+    typer.echo("review the tree, then run `rag take`")
+
+
+@app.command()
+def take(
+    from_dir: str = typer.Option("", "--from", help="The staging tree to take in"),
+    pages: int = typer.Option(
+        0, "--pages", help="Assume this page count instead of reading the PDFs"
+    ),
+) -> None:
+    """File a reviewed staging tree into the corpus and record it in the intake.
+
+    The staging tree is the last moment a misnamed download is cheap to fix:
+    once a file is in the corpus it has a slug, extracted Markdown and
+    content-addressed chunk ids that all change when it is renamed.
+    """
+    resolved = _resolve()
+    staging = Path(from_dir) if from_dir else resolved.kb_root / DEFAULT_STAGING
+    if not staging.is_dir() or not any(staging.rglob("*.pdf")):
+        typer.secho(
+            f"nothing staged in {staging}; run `rag stage` first",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    report = take_staged(
+        resolved, staging, pages_of=(lambda _: pages) if pages else None
+    )
+
+    for named in report.taken:
+        typer.echo(f"  + {named.course}/{named.kind:<11} {named.topic}/{named.stem}")
+    for named in report.duplicates:
+        typer.echo(f"  = {named.stem} already in the corpus")
+    for refused in report.unreadable:
+        typer.secho(f"  ! {refused.filename}: {refused.reason}", fg=typer.colors.YELLOW)
+
+    typer.echo(
+        f"\n{len(report.taken)} taken, {len(report.duplicates)} already held, "
+        f"{len(report.unreadable)} refused"
+    )
+    if report.taken:
+        typer.echo("now run `rag extract`, `rag chunk`, `rag index`, `rag push`")
 
 
 @app.command()
