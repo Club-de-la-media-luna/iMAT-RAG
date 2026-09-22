@@ -75,7 +75,9 @@ class Unreadable(BaseModel, frozen=True):
     reason: str
 
 
-def parse_filename(filename: str) -> Named | Unreadable:
+def parse_filename(  # pylint: disable=too-many-return-statements
+    filename: str,
+) -> Named | Unreadable:
     """Read `<course>_<kind>_<topic>_<title>.pdf`, or say why it cannot be."""
     if UNSAFE.search(filename):
         return Unreadable(
@@ -152,24 +154,28 @@ def sort_into(inbox: Path, staging: Path) -> Sorted:
     whole pass re-run — which is why a destination that already exists is
     reported rather than overwritten.
     """
-    report = Sorted()
+    filed: list[Named] = []
+    already: list[Named] = []
+    unreadable: list[Unreadable] = []
+
     for path in sorted(inbox.iterdir()):
         if not path.is_file():
             continue
         read = parse_filename(path.name)
         if isinstance(read, Unreadable):
-            report.unreadable.append(read)
+            unreadable.append(read)
             continue
 
         target = staging / destination_of(read)
         if target.is_file():
-            report.already.append(read)
+            already.append(read)
             continue
 
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
-        report.sorted.append(read)
-    return report
+        filed.append(read)
+
+    return Sorted(sorted=filed, already=already, unreadable=unreadable)
 
 
 class Taken(BaseModel):
@@ -247,7 +253,7 @@ def _held_already(paths: Paths) -> set[str]:
     return held
 
 
-def take(
+def take(  # pylint: disable=too-many-locals
     paths: Paths,
     staging: Path,
     *,
@@ -265,21 +271,23 @@ def take(
     a duplicate and left alone.
     """
     counted = pages_of or _pages_with_pymupdf
-    report = Taken()
     held = _held_already(paths)
-    recorded = read_intake(paths)
-    known = {str(entry.get("sha256", "")) for entry in recorded}
+    known = {str(entry.get("sha256", "")) for entry in read_intake(paths)}
+    fresh: list[dict[str, object]] = []
+    taken: list[Named] = []
+    duplicates: list[Named] = []
+    unreadable: list[Unreadable] = []
 
     for source in sorted(staging.rglob("*.pdf")):
         relative = source.relative_to(staging)
         read = named_from(relative)
         if isinstance(read, Unreadable):
-            report.unreadable.append(read)
+            unreadable.append(read)
             continue
 
         digest = sha256_of(source)
         if digest in held or digest in known:
-            report.duplicates.append(read)
+            duplicates.append(read)
             continue
 
         target = paths.kb_root / relative
@@ -287,28 +295,60 @@ def take(
         shutil.copy2(source, target)
         held.add(digest)
 
-        recorded.append(
-            {
-                "path": relative.as_posix(),
-                "title": title_for(read),
-                "course": read.course,
-                "kind": read.kind,
-                "topic": read.topic,
-                "pages": counted(target),
-                "sha256": digest,
-                "origin": origin or f"{STAGING_ORIGIN}/{relative.as_posix()}",
-                "classified": CLASSIFIED,
-            }
+        fresh.append(
+            entry_for(
+                read,
+                relative,
+                pages=counted(target),
+                digest=digest,
+                origin=origin or f"{STAGING_ORIGIN}/{relative.as_posix()}",
+            )
         )
-        report.taken.append(read)
+        taken.append(read)
 
-    if report.taken:
-        _write_intake(paths, recorded)
-    return report
+    record(paths, fresh)
+    return Taken(taken=taken, duplicates=duplicates, unreadable=unreadable)
 
 
-def _write_intake(paths: Paths, files: list[dict[str, object]]) -> None:
-    """Rewrite the intake record, keeping whatever archive it already named."""
+def entry_for(  # pylint: disable=too-many-arguments
+    named: Named,
+    relative: Path,
+    *,
+    pages: int,
+    digest: str,
+    origin: str,
+    classified: str = CLASSIFIED,
+) -> dict[str, object]:
+    """One intake entry, in the shape `collect_staged` and M9 both read."""
+    return {
+        "path": relative.as_posix(),
+        "title": title_for(named),
+        "course": named.course,
+        "kind": named.kind,
+        "topic": named.topic,
+        "pages": pages,
+        "sha256": digest,
+        "origin": origin,
+        "classified": classified,
+    }
+
+
+def record(paths: Paths, entries: list[dict[str, object]]) -> int:
+    """Append entries the intake does not already carry, and say how many.
+
+    The one place the intake record is written. `rag take` and `rag inbox`
+    both file material the ledgers say nothing about, and a second writer
+    would be a second chance to write a shape `collect_staged` cannot read.
+
+    Keyed on the hash, so re-running either command over the same material
+    leaves one entry rather than two.
+    """
+    recorded = read_intake(paths)
+    known = {str(entry.get("sha256", "")) for entry in recorded}
+    added = [entry for entry in entries if str(entry.get("sha256", "")) not in known]
+    if not added:
+        return 0
+
     target = intake_path(paths)
     archive = ARCHIVE
     if target.is_file():
@@ -317,10 +357,15 @@ def _write_intake(paths: Paths, files: list[dict[str, object]]) -> None:
         except (ValueError, OSError, KeyError):
             archive = ARCHIVE
     target.write_text(
-        json.dumps({"archive": archive, "files": files}, ensure_ascii=False, indent=1)
+        json.dumps(
+            {"archive": archive, "files": [*recorded, *added]},
+            ensure_ascii=False,
+            indent=1,
+        )
         + "\n",
         encoding="utf-8",
     )
+    return len(added)
 
 
 __all__ = [
@@ -331,8 +376,10 @@ __all__ = [
     "Taken",
     "Unreadable",
     "destination_of",
+    "entry_for",
     "named_from",
     "parse_filename",
+    "record",
     "sort_into",
     "take",
     "title_for",

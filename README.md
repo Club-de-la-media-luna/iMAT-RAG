@@ -69,10 +69,26 @@ and `coverage` never loads it at all.
 
 ## Taking in new material
 
+Your own downloads come in by name. Moodle gives one PDF at a time and no
+structure, so the name carries the whole address — and a name missing its kind
+is refused rather than guessed, because the kind is the tier and the tier
+decides which source wins when the corpus disagrees with itself.
+
+```sh
+# ~/Downloads/moodle/mgp_slides_teoria_dgm-08-agent-eval.pdf
+uv run rag stage ~/Downloads/moodle   # sort into a staging tree; corpus untouched
+uv run rag take                       # file the reviewed tree, record the intake
+```
+
+Two steps because the staging tree is the last moment a misnamed download is
+cheap to fix: after `take` a file has a slug, extracted Markdown and
+content-addressed chunk ids that all change when it is renamed.
+
 Contributors keep their own repository rather than joining the organisation:
 they duplicate the public
 [inbox template](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox-template),
-make it private, drop PDFs into `<COURSE>/<kind>/`, and share the name.
+make it private, drop PDFs into `<COURSE>/<kind>[/<topic>]/`, and share the
+name.
 
 ```sh
 uv run rag inbox someone/master_kb-inbox   # take it, and register the source

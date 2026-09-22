@@ -247,7 +247,12 @@ def test_a_truncated_front_matter_pdf_is_rejected(tmp_path: Path) -> None:
 
 
 def test_slides_are_kept_but_get_no_ledger_entry(tmp_path: Path) -> None:
-    """Nothing parses the slides tier yet; claiming otherwise would be a lie."""
+    """A bibliography has no section for the slides of its own course.
+
+    They are discovered through `intake.json` instead, and filed under a
+    topic — `general` where the drop names none, because the corpus files by
+    topic and a silent guess would be worse than saying so.
+    """
     paths = make_kb(tmp_path / "kb")
 
     report = ingest_from(
@@ -255,7 +260,7 @@ def test_slides_are_kept_but_get_no_ledger_entry(tmp_path: Path) -> None:
     )
 
     assert (
-        paths.kb_root / "courses" / "DRL" / "raw" / "slides" / "tema-3.pdf"
+        paths.kb_root / "courses" / "DRL" / "raw" / "slides" / "general" / "tema-3.pdf"
     ).is_file()
     assert "tema-3" not in paths.ledger("DRL").read_text()
     assert [d.filename for d in report.stored] == ["tema-3.pdf"]

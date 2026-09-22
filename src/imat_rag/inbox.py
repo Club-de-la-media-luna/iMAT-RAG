@@ -27,6 +27,8 @@ from pydantic import BaseModel, Field
 
 from imat_rag.config import Paths
 from imat_rag.coverage import COURSE_NAMES
+from imat_rag.ingest.stage import Named, entry_for, record
+from imat_rag.ingest.staged import TIERS
 from imat_rag.publish import REPO_TYPE, Hub, explained, hub_client
 
 HEADINGS = {
@@ -35,9 +37,21 @@ HEADINGS = {
 }
 """Kinds that map onto a bibliography section, and so onto a ledger entry."""
 
-STORED_KINDS = ("slides", "exams")
-"""Kinds kept for later. Nothing reads these tiers yet, so no ledger entry is
-written — claiming coverage the pipeline does not have is worse than a gap."""
+STORED_KINDS = tuple(TIERS)
+"""Kinds that belong to no bibliography section. Every rung `staged.TIERS`
+ranks, because a course sets work and hands out notes as surely as it gives
+lectures, and refusing those left a contributor no way to pass them on.
+
+No ledger entry is written for them — a bibliography has no section for the
+slides of its own course — so each is recorded in `intake.json` instead."""
+
+DEFAULT_TOPIC = "general"
+"""Where material lands when the drop names no topic. The corpus files by
+topic, and a drop that says nothing about one is not grounds for guessing."""
+
+CLASSIFIED = "filed by a contributor"
+"""Why a recorded file has the kind it has. M9 classified by position in
+somebody else's tree; here the contributor's own directory is the claim."""
 
 KINDS = (*HEADINGS, *STORED_KINDS)
 
@@ -74,6 +88,7 @@ class Drop(BaseModel, frozen=True):
     kind: str
     filename: str
     title: str = ""
+    topic: str = DEFAULT_TOPIC
 
     @property
     def heading(self) -> str:
@@ -108,7 +123,9 @@ class Report(BaseModel):
         )
 
 
-def parse_drop(path: str) -> Drop | Rejected:  # pylint: disable=too-many-return-statements
+def parse_drop(  # pylint: disable=too-many-return-statements
+    path: str,
+) -> Drop | Rejected:
     """Read `<COURSE>/<kind>/<file>.pdf`, or say why it cannot be read.
 
     Deliberately strict. The tree comes from a repository this organisation
@@ -119,12 +136,14 @@ def parse_drop(path: str) -> Drop | Rejected:  # pylint: disable=too-many-return
         return Rejected(path=path, reason="path climbs out of the drop")
 
     parts = [part for part in Path(path).parts if part not in (".", "")]
-    if len(parts) != 3:
+    if len(parts) not in (3, 4):
         return Rejected(
-            path=path, reason="expected <COURSE>/<kind>/<file>.pdf, got a bare file"
+            path=path,
+            reason="expected <COURSE>/<kind>[/<topic>]/<file>.pdf, got a bare file",
         )
 
-    course, kind, filename = parts
+    course, kind, *rest = parts
+    topic, filename = (rest[0], rest[1]) if len(rest) == 2 else (DEFAULT_TOPIC, rest[0])
     if course not in COURSE_NAMES:
         return Rejected(path=path, reason=f"{course} is not a course code")
     if kind not in KINDS:
@@ -136,7 +155,12 @@ def parse_drop(path: str) -> Drop | Rejected:  # pylint: disable=too-many-return
             path=path, reason="the filename contains characters a ledger cannot hold"
         )
 
-    return Drop(course=course, kind=kind, filename=filename)
+    if FORGEABLE.search(topic):
+        return Rejected(
+            path=path, reason="the topic contains characters a path cannot hold"
+        )
+
+    return Drop(course=course, kind=kind, topic=topic, filename=filename)
 
 
 def title_from(filename: str) -> str:
@@ -235,7 +259,7 @@ def _destination(paths: Paths, drop: Drop) -> Path:
     """Where a drop is filed. `basic` and `extra` share the literature tree."""
     if drop.kind in HEADINGS:
         return paths.literature(drop.course) / drop.filename
-    return paths.courses / drop.course / "raw" / drop.kind / drop.filename
+    return paths.courses / drop.course / "raw" / drop.kind / drop.topic / drop.filename
 
 
 def _titled(staged: Path, drop: Drop) -> Drop:
@@ -345,11 +369,48 @@ def _take(
         held.add(digest)
 
         if not drop.heading:
+            _record_intake(paths, drop, target, counted, digest, relative)
             report.stored.append(drop)
             continue
 
         _record(paths, drop)
         report.accepted.append(drop)
+
+
+def _record_intake(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    paths: Paths,
+    drop: Drop,
+    target: Path,
+    pages: int,
+    digest: str,
+    origin: str,
+) -> None:
+    """Record a stored drop where the pipeline looks for material.
+
+    Copying without this was a silent dead drop: the deck sat in the corpus,
+    nothing discovered it, and `rag coverage` reported the course exactly as
+    it had been before the contributor sent anything.
+    """
+    named = Named(
+        course=drop.course,
+        kind=drop.kind,
+        topic=drop.topic,
+        stem=Path(drop.filename).stem,
+        filename=drop.filename,
+    )
+    record(
+        paths,
+        [
+            entry_for(
+                named,
+                target.relative_to(paths.kb_root),
+                pages=pages,
+                digest=digest,
+                origin=origin,
+                classified=CLASSIFIED,
+            )
+        ],
+    )
 
 
 def _record(paths: Paths, drop: Drop) -> None:

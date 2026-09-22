@@ -40,13 +40,18 @@ After that, adding more material is just step 2 again.
 ```
 DRL/basic/sutton-barto-reinforcement-learning-2018.pdf
 IAP/extra/koller-friedman-probabilistic-graphical-models.pdf
-MGP/slides/tema-3-vaes.pdf
+MGP/slides/tema-3/vaes.pdf
+MGP/assignments/tema-3/practica-vaes.pdf
 MP/exams/2024-enero.pdf
 ```
 
-`<COURSE>/<kind>/<file>` — that path is the whole contribution. It carries the
-two things the pipeline cannot work out for itself: **which course** the
-material belongs to, and **how authoritative** it is.
+`<COURSE>/<kind>[/<topic>]/<file>` — that path is the whole contribution. It
+carries the two things the pipeline cannot work out for itself: **which
+course** the material belongs to, and **how authoritative** it is.
+
+The topic is optional and anything filed without one lands under `general`.
+Give it where a course has topics: the corpus files by topic, and searching
+`MGP/slides/general` for what tema 3 actually said is worse than it sounds.
 
 The folders already exist in the template, so this costs you a click rather
 than any typing. A file left at the top level is refused and reported, not
@@ -79,9 +84,13 @@ carrying both course codes.
 | `extra/` | On the *bibliografía complementaria* |
 | `slides/` | Lecture slides |
 | `exams/` | Past exams, problem sets with solutions |
+| `assignments/` | Work the course sets: prácticas, projects, problem sheets |
+| `notes/` | Student-written summaries and write-ups |
+| `code/` | Notebooks and the code of a worked exercise |
 
-Only `basic/` is indexed today. The others are accepted now so that adding them
-later is an append rather than a re-ingest — upload them, they will keep.
+All of them are indexed. They are not ranked alike: a lecturer's deck outranks
+a book, and a student's notes rank below one, so where you file something
+decides whose answer wins when the corpus disagrees with itself.
 
 **Unsure whether something is basic or complementary?** Put it in `extra/` and
 say so. Wrongly-basic material pollutes what everyone searches; wrongly-extra

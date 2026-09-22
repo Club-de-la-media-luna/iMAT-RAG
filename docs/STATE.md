@@ -148,6 +148,8 @@ uv run rag chunk          # re-chunk everything, refresh the manifest
 uv run rag index          # re-embed and rebuild (~25 min on the 3050)
 uv run rag push / pull    # the corpus, to and from the Hub (--sources for PDFs)
 uv run rag inbox [repo]   # take a contributor's drop into the corpus
+uv run rag stage <dir>    # sort a flat drop of downloads into a staging tree
+uv run rag take           # file the reviewed staging tree, record the intake
 ```
 
 ## Known issues, none blocking
