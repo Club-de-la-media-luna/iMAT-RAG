@@ -259,6 +259,7 @@ def take(  # pylint: disable=too-many-locals
     *,
     pages_of: Callable[[Path], int] | None = None,
     origin: str = "",
+    year: str = "",
 ) -> Taken:
     """File everything in the staging tree into the corpus, and record it.
 
@@ -269,6 +270,10 @@ def take(  # pylint: disable=too-many-locals
     Idempotent. Re-running after renaming one file must not take the rest a
     second time, so a file whose bytes the corpus already holds is reported as
     a duplicate and left alone.
+
+    `year` is the course year the material was taught in. It is what lets this
+    year's deck supersede last year's (ADR-0009); left empty, the entry reads
+    as the 2025-26 drop.
     """
     counted = pages_of or _pages_with_pymupdf
     held = _held_already(paths)
@@ -302,6 +307,7 @@ def take(  # pylint: disable=too-many-locals
                 pages=counted(target),
                 digest=digest,
                 origin=origin or f"{STAGING_ORIGIN}/{relative.as_posix()}",
+                year=year,
             )
         )
         taken.append(read)
@@ -318,9 +324,14 @@ def entry_for(  # pylint: disable=too-many-arguments
     digest: str,
     origin: str,
     classified: str = CLASSIFIED,
+    year: str = "",
 ) -> dict[str, object]:
-    """One intake entry, in the shape `collect_staged` and M9 both read."""
-    return {
+    """One intake entry, in the shape `collect_staged` and M9 both read.
+
+    No `year` key unless one is given: an absent year already means the M9
+    drop, and a contributor's inbox does not say when its material was taught.
+    """
+    entry: dict[str, object] = {
         "path": relative.as_posix(),
         "title": title_for(named),
         "course": named.course,
@@ -331,6 +342,9 @@ def entry_for(  # pylint: disable=too-many-arguments
         "origin": origin,
         "classified": classified,
     }
+    if year:
+        entry["year"] = year
+    return entry
 
 
 def record(paths: Paths, entries: list[dict[str, object]]) -> int:

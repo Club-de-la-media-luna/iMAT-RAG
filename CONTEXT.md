@@ -43,6 +43,18 @@ or `scan`. Describes the physical difficulty of reading the PDF, and is
 independent of Source tier.
 _Avoid_: type, format, difficulty
 
+**Vintage**:
+The course year a source was taught in, `2026-27`. Recorded by the intake;
+an entry with none is the 2025-26 drop. Books have no Vintage.
+_Avoid_: edition, version, date
+
+**Supersession**:
+The recorded verdict that a Successor deck replaces one or more Predecessor
+decks of the same Course. Kept outside the index in `supersessions.json`, so
+deciding it rebuilds nothing. A Predecessor is demoted in ranking, never
+deleted.
+_Avoid_: replacement, override, deprecation
+
 **Coverage**:
 What the corpus is known *not* to contain, per Course. A Course with no
 acquired Books has zero Coverage, and the system says so rather than answering

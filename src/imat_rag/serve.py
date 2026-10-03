@@ -36,7 +36,11 @@ writes the answer.
 Call `coverage` before concluding that something is absent: several courses
 have no material indexed at all, and an empty `search` result for one of them
 says nothing about the literature. Call `fetch` with a `chunk_id` from a
-search result to read the sections either side of it.\
+search result to read the sections either side of it.
+
+A hit with `superseded_by` set comes from last year's deck, which this year's
+replaced; it is returned only because nothing newer answers. Say so when
+citing it rather than presenting it as current.\
 """
 
 

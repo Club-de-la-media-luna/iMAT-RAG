@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, computed_field
 from imat_rag.config import Paths
 from imat_rag.ingest.catalogue import SourceTier
 from imat_rag.ingest.store import extracted_books, read_manifest
+from imat_rag.supersession import lineage
 
 COURSE_NAMES = {
     "DRL": "Deep Reinforcement Learning",
@@ -49,6 +50,13 @@ class CourseCoverage(BaseModel, frozen=True):
     """How the sources break down. "30 sources" is not an answer when fifteen
     of them are lab sheets and one is a student's cheat sheet."""
 
+    by_year: dict[str, int] = Field(default_factory=dict)
+    """Intake sources per course year: how much of the course is on this
+    year's decks, and how much still on last year's. Books have no year."""
+
+    superseded: int = 0
+    """Sources a newer deck has replaced. Still searchable, ranked below it."""
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def indexed(self) -> bool:
@@ -67,18 +75,26 @@ def coverage(paths: Paths) -> list[CourseCoverage]:
     reported is a hole the caller will answer around.
     """
     chunks_by_slug = {book.slug: book.chunks for book in read_manifest(paths).books}
+    found = lineage(paths)
     totals: dict[str, dict[str, int]] = {}
     slugs: dict[str, list[str]] = {}
     kinds: dict[str, Counter[str]] = {}
+    years: dict[str, Counter[str]] = {}
 
     for meta in extracted_books(paths):
+        vintage = found.vintage_of(meta.slug)
         for course in meta.courses:
-            entry = totals.setdefault(course, {"books": 0, "pages": 0, "chunks": 0})
+            entry = totals.setdefault(
+                course, {"books": 0, "pages": 0, "chunks": 0, "superseded": 0}
+            )
             entry["books"] += 1
             entry["pages"] += meta.pages
             entry["chunks"] += chunks_by_slug.get(meta.slug, 0)
+            entry["superseded"] += bool(found.successors_of(meta.slug))
             slugs.setdefault(course, []).append(meta.slug)
             kinds.setdefault(course, Counter())[kind_of(meta.tier)] += 1
+            if vintage:
+                years.setdefault(course, Counter())[vintage] += 1
 
     return [
         CourseCoverage(
@@ -86,6 +102,7 @@ def coverage(paths: Paths) -> list[CourseCoverage]:
             name=name,
             book_slugs=tuple(sorted(slugs.get(course, ()))),
             by_kind=dict(kinds.get(course, Counter())),
+            by_year=dict(sorted(years.get(course, Counter()).items())),
             **totals.get(course, {}),
         )
         for course, name in sorted(COURSE_NAMES.items())

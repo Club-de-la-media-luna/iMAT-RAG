@@ -4,11 +4,14 @@ Retrieval is hybrid — dense vectors and BM25 fused by reciprocal rank — then
 every matched child is expanded to its parent section before returning. The
 child is what matched; the parent is what is worth reading. No reranker in v1;
 see ADR and the design's deferred list.
+
+Between fusion and expansion, a deck this year's deck superseded is demoted,
+and dropped where its successor says the same thing (ADR-0009).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 from pydantic import BaseModel, computed_field
@@ -19,11 +22,22 @@ from imat_rag.index.embed import (
     EmbedConfig,
     Encoder,
     batched,
+    cosine,
     encode_texts,
     load_encoder,
 )
 from imat_rag.ingest.chunk import Chunk
+from imat_rag.ingest.staged import DEFAULT_YEAR
 from imat_rag.ingest.store import locate_chunk, read_chunks, read_manifest
+from imat_rag.supersession import DEMOTION, TAU, Lineage, lineage
+
+SCORE = "_relevance_score"
+"""Where LanceDB puts the fused score on a hybrid result row."""
+
+OVERFETCH = 2
+"""Candidates fetched per result wanted. Ranking drops predecessors that only
+repeat their successor; without spare candidates a search for five would
+return fewer whenever last year's deck was in the running."""
 
 
 class Hit(BaseModel):
@@ -40,6 +54,19 @@ class Hit(BaseModel):
     matched_text: str = ""
     """The child that matched, when the returned text is its parent."""
 
+    vintage: str = ""
+    """The course year a deck was taught in; empty for a ledger book."""
+
+    superseded_by: str | None = None
+    """The deck that replaced this one, when it has been replaced.
+
+    A superseded passage is still returned when nothing newer answers — cut
+    material may be the clearest explanation there is — but the agent must be
+    able to say it was cut rather than present it as current."""
+
+    superseded_in: str = ""
+    """The course year of the deck in `superseded_by`."""
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def citation(self) -> str:
@@ -54,7 +81,13 @@ class Hit(BaseModel):
             if self.page_start == self.page_end
             else f"pp. {self.page_start}-{self.page_end}"
         )
-        return f"{self.breadcrumb}, {pages}"
+        note = ""
+        if self.superseded_by:
+            note = (
+                f" ({self.vintage or DEFAULT_YEAR}, "
+                f"superseded by {self.superseded_in or 'a newer deck'})"
+            )
+        return f"{self.breadcrumb}{note}, {pages}"
 
 
 class Neighbourhood(BaseModel):
@@ -111,6 +144,58 @@ def build(
     return written, len(parents)
 
 
+def embed_children(
+    chunks: Sequence[Chunk],
+    encoder: Encoder,
+    config: EmbedConfig | None = None,
+) -> dict[str, list[float]]:
+    """Vectors for one source's children, by chunk id."""
+    children = [chunk for chunk in chunks if not chunk.is_parent]
+    vectors: dict[str, list[float]] = {}
+    for batch in batched(children, 256):
+        encoded = encode_texts(encoder, [c.embedding_text for c in batch], config)
+        vectors.update((c.chunk_id, v) for c, v in zip(batch, encoded, strict=True))
+    return vectors
+
+
+def append(
+    paths: Paths, chunks: Sequence[Chunk], vectors: Mapping[str, Sequence[float]]
+) -> tuple[int, int]:
+    """Add sources to the index without rebuilding it. Returns (children, parents).
+
+    A new deck arrives one at a time during the year; re-embedding forty
+    thousand children to add forty would make every refresh a 25-minute GPU
+    job. Whatever the index already holds for these sources is replaced, so
+    appending twice leaves one copy.
+    """
+    children = [c for c in chunks if not c.is_parent]
+    parents = [c for c in chunks if c.is_parent]
+    if not children:
+        return 0, 0
+
+    db = lance.connect(paths.index)
+    _forget(db, {c.book_slug for c in chunks})
+    rows = [lance.child_row(c, vectors[c.chunk_id]) for c in children]
+    lance.write_table(db, lance.CHILDREN, rows, overwrite=False)
+    if parents:
+        lance.write_table(
+            db, lance.PARENTS, [lance.parent_row(c) for c in parents], overwrite=False
+        )
+    lance.build_fts(db.open_table(lance.CHILDREN))
+    return len(children), len(parents)
+
+
+def _forget(db: Any, slugs: set[str]) -> None:
+    """Remove every row these sources have in either table."""
+    present = [
+        name for name in (lance.CHILDREN, lance.PARENTS) if name in db.table_names()
+    ]
+    for name in present:
+        table = db.open_table(name)
+        for slug in slugs:
+            lance.remove_book(table, slug)
+
+
 def search(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     paths: Paths,
     query: str,
@@ -129,16 +214,75 @@ def search(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 
     encoder = encoder or load_encoder(config)
     vector = encode_texts(encoder, [query], config)[0]
-    matches = lance.search_children(
-        db.open_table(lance.CHILDREN), query, vector, limit=limit, course=course
+    found = lineage(paths)
+    candidates = lance.search_children(
+        db.open_table(lance.CHILDREN),
+        query,
+        vector,
+        limit=limit * OVERFETCH,
+        course=course,
     )
+    matches = ranked(candidates, found, limit)
     if not expand or lance.PARENTS not in db.table_names():
-        return [_hit(row, row["body"]) for row in matches]
+        return [_dated(_hit(row, row["body"]), found) for row in matches]
 
     parents = lance.fetch_parents(
         db.open_table(lance.PARENTS), [row["parent_id"] for row in matches]
     )
-    return _expanded(matches, parents)
+    return [_dated(hit, found) for hit in _expanded(matches, parents)]
+
+
+def ranked(
+    candidates: Sequence[dict[str, Any]], found: Lineage, limit: int
+) -> list[dict[str, Any]]:
+    """Put successors first, keeping what only a predecessor holds.
+
+    A predecessor's child is dropped when one of its own successors' children
+    in the same results says the same thing (cosine ≥ TAU): the newer deck says
+    it, and saying it twice wastes a slot. Otherwise it is kept, demoted —
+    when it is the only thing that answers, it still comes back.
+    """
+    kept: list[dict[str, Any]] = []
+    for row in candidates:
+        successors = found.successors_of(str(row["book_slug"]))
+        if not successors:
+            kept.append(row)
+            continue
+        newer = [other for other in candidates if other["book_slug"] in successors]
+        if _restated(row, newer):
+            continue
+        kept.append({**row, SCORE: _score(row) * DEMOTION})
+    # Stable, so that equal scores keep the order fusion gave them.
+    kept.sort(key=_score, reverse=True)
+    return kept[:limit]
+
+
+def _score(row: Mapping[str, Any]) -> float:
+    return float(row.get(SCORE) or 0.0)
+
+
+def _restated(row: Mapping[str, Any], newer: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether a successor child in the results matches this one."""
+    vector = row.get(lance.VECTOR_FIELD)
+    if vector is None:
+        return False
+    return any(
+        cosine(vector, other[lance.VECTOR_FIELD]) >= TAU
+        for other in newer
+        if other.get(lance.VECTOR_FIELD) is not None
+    )
+
+
+def _dated(hit: Hit, found: Lineage) -> Hit:
+    """Say which year a hit is from, and whether it has been replaced."""
+    successors = found.successors_of(hit.book_slug)
+    return hit.model_copy(
+        update={
+            "vintage": found.vintage_of(hit.book_slug),
+            "superseded_by": ", ".join(successors) or None,
+            "superseded_in": found.vintage_of(successors[0]) if successors else "",
+        }
+    )
 
 
 def fetch(paths: Paths, chunk_id: str) -> Neighbourhood | None:
@@ -166,10 +310,13 @@ def fetch(paths: Paths, chunk_id: str) -> Neighbourhood | None:
 
     order = [chunk for chunk in chunks if chunk.is_parent == target.is_parent]
     at = order.index(target)
+    found = lineage(paths)
+    previous = order[at - 1] if at > 0 else None
+    following = order[at + 1] if at + 1 < len(order) else None
     return Neighbourhood(
-        chunk=_from_chunk(target, matched),
-        previous=_from_chunk(order[at - 1]) if at > 0 else None,
-        following=_from_chunk(order[at + 1]) if at + 1 < len(order) else None,
+        chunk=_dated(_from_chunk(target, matched), found),
+        previous=_dated(_from_chunk(previous), found) if previous else None,
+        following=_dated(_from_chunk(following), found) if following else None,
     )
 
 

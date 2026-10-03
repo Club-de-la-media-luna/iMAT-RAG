@@ -84,6 +84,21 @@ Two steps because the staging tree is the last moment a misnamed download is
 cheap to fix: after `take` a file has a slug, extracted Markdown and
 content-addressed chunk ids that all change when it is renamed.
 
+`take` records the course year (`--year 2026-27`, default the current one).
+This year's deck then replaces last year's version of it in the rankings
+without deleting it ([ADR-0009](./docs/adr/0009-new-slides-supersede-old-ones.md)):
+
+```sh
+uv run rag extract --tier slides && uv run rag chunk
+uv run rag refresh                    # grade every new deck against last year's
+uv run rag refresh <slug> --accept    # or --reject, after reading derived/refresh/<slug>.md
+```
+
+`refresh` spends no tokens: identical text is graded `same`, and anything
+else is compared on the vectors the index already holds. Only a deck that
+changed a lot is held for review, with a short report of what was added,
+dropped and moved. It appends the new deck to the index, so no rebuild is needed.
+
 Contributors keep their own repository rather than joining the organisation:
 they duplicate the public
 [inbox template](https://huggingface.co/datasets/Club-de-la-media-luna/master_kb-inbox-template),

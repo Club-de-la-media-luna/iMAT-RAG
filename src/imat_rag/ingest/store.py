@@ -23,6 +23,7 @@ from imat_rag.ingest.chunk import (
     chunk_book,
 )
 from imat_rag.ingest.extract import BookMeta
+from imat_rag.supersession import fingerprint
 
 
 class ChunkConfig(BaseModel, frozen=True):
@@ -60,6 +61,11 @@ class Manifest(BaseModel):
 
     chunk_config: ChunkConfig = Field(default_factory=ChunkConfig)
     books: list[BookChunks] = Field(default_factory=list)
+    supersessions_sha256: str = ""
+    """The supersession record ranking reads at query time (ADR-0009).
+
+    It lives outside the index, so without its hash here a change of ranking
+    would have no recorded cause."""
 
     @property
     def total_chunks(self) -> int:
@@ -126,9 +132,10 @@ def read_manifest(paths: Paths) -> Manifest:
 
 
 def write_manifest(paths: Paths, manifest: Manifest) -> None:
-    """Record what is currently indexed."""
+    """Record what is currently indexed, and which supersessions rank it."""
     paths.manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.books.sort(key=lambda book: book.slug)
+    manifest.supersessions_sha256 = fingerprint(paths)
     paths.manifest.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
 
 

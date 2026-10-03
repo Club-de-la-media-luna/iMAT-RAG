@@ -8,6 +8,7 @@ ADR-0002 exists to avoid.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
 from typing import Any, Protocol
 
@@ -88,6 +89,18 @@ def encode_texts(
         convert_to_numpy=True,
     )
     return [[float(value) for value in row] for row in vectors]
+
+
+def cosine(left: Sequence[float], right: Sequence[float]) -> float:
+    """Cosine similarity, or 0 when either side is the zero vector.
+
+    Not a dot product, although stored vectors are unit-normalised: a vector
+    handed back by the index is the only thing in reach, and normalising here
+    costs nothing at the sizes ranking compares (a few dozen pairs).
+    """
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
+    norm = math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right))
+    return dot / norm if norm else 0.0
 
 
 def batched(items: Sequence[Any], size: int) -> Iterable[Sequence[Any]]:

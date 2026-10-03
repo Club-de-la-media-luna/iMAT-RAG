@@ -124,6 +124,32 @@ def search_children(
     return list(request.limit(limit).to_list())
 
 
+def literal(value: str) -> str:
+    """A SQL string literal. Slugs come from file paths, and a path may hold `'`."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def vectors_of(table: Any, book_slug: str) -> dict[str, list[float]]:
+    """Every child vector one source already has in the index, by chunk id.
+
+    What makes comparing a new deck against last year's cost nothing: the old
+    deck was embedded when it was indexed, and is never embedded again.
+    """
+    rows = (
+        table.search()
+        .where(f"book_slug = {literal(book_slug)}")
+        .select(["chunk_id", VECTOR_FIELD])
+        .limit(max(table.count_rows(), 1))
+        .to_list()
+    )
+    return {str(row["chunk_id"]): list(row[VECTOR_FIELD]) for row in rows}
+
+
+def remove_book(table: Any, book_slug: str) -> None:
+    """Drop one source's rows, so that appending it again does not double it."""
+    table.delete(f"book_slug = {literal(book_slug)}")
+
+
 def fetch_parents(table: Any, parent_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
     """Load the sections behind a set of matched children."""
     wanted = [pid for pid in dict.fromkeys(parent_ids) if pid]

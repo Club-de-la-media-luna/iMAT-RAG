@@ -128,6 +128,20 @@ drop. See [ADR-0007](./adr/0007-contributor-owned-inbox-repositories.md) for
 why nobody is invited into the organisation — on the free tier, a shared inbox
 would require org-wide `write`, which includes deleting `master_kb-derived`.
 
+## This year's slides (ADR-0009)
+
+Built, not yet run on real material: nothing from 2026-27 has been taken in.
+`rag take` records the course year, and `rag refresh` grades each new deck
+against last year's decks of the same course. Grades are `same`, `revised`,
+`changed` or `new`, decided on the vectors the index already holds. The
+verdict goes in `supersessions.json` beside `intake.json`. Search demotes a
+superseded deck (×0.6), drops it where its successor says the same thing, and
+flags it (`superseded_by`) where it is the only thing that answers. The
+manifest fingerprints the record.
+
+The thresholds come from five measured pairs. Revisit them once ten real
+chapters have gone through.
+
 ## Then
 
 Reranker (only once it can be shown to help), `rag ask` via litellm,
@@ -150,6 +164,7 @@ uv run rag push / pull    # the corpus, to and from the Hub (--sources for PDFs)
 uv run rag inbox [repo]   # take a contributor's drop into the corpus
 uv run rag stage <dir>    # sort a flat drop of downloads into a staging tree
 uv run rag take           # file the reviewed staging tree, record the intake
+uv run rag refresh [slug] # this year's decks supersede last year's (ADR-0009)
 ```
 
 ## Known issues, none blocking

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -12,6 +14,7 @@ from imat_rag.coverage import coverage as report_coverage
 from imat_rag.inbox import SourceRepoIsPublic
 from imat_rag.inbox import ingest as take_inbox
 from imat_rag.inbox import ingest_all as take_all_inboxes
+from imat_rag.index.embed import load_encoder
 from imat_rag.index.search import build as build_index
 from imat_rag.index.search import search as run_search
 from imat_rag.ingest.catalogue import Book, SourceTier, collect
@@ -20,7 +23,7 @@ from imat_rag.ingest.stage import DEFAULT_STAGING
 from imat_rag.ingest.stage import sort_into as sort_inbox
 from imat_rag.ingest.stage import take as take_staged
 from imat_rag.ingest.staged import TIERS as STAGED_KINDS
-from imat_rag.ingest.staged import collect_staged
+from imat_rag.ingest.staged import academic_year, collect_staged, is_academic_year
 from imat_rag.ingest.store import (
     ChunkConfig,
     Manifest,
@@ -32,7 +35,13 @@ from imat_rag.ingest.store import (
 from imat_rag.publish import CannotReachHub, NothingToPublish, RepositoryIsPublic
 from imat_rag.publish import pull as pull_artifacts
 from imat_rag.publish import push as push_artifacts
+from imat_rag.refresh import NotInIntake, NotReady, Refreshed
+from imat_rag.refresh import accept as accept_verdict
+from imat_rag.refresh import pending as pending_decks
+from imat_rag.refresh import refresh as refresh_deck
+from imat_rag.refresh import reject as reject_verdict
 from imat_rag.serve import serve as run_server
+from imat_rag.supersession import REVIEW
 
 app = typer.Typer(
     help="Retrieval over the MIA master's reading list.",
@@ -239,6 +248,9 @@ def coverage() -> None:
             f"{entry.chunks:>6} chunks"
         )
         typer.echo(f"{'':<47} {breakdown}")
+        if entry.by_year:
+            years = ", ".join(f"{year}: {n}" for year, n in entry.by_year.items())
+            typer.echo(f"{'':<47} {years} · {entry.superseded} superseded")
 
 
 @app.command()
@@ -370,6 +382,9 @@ def take(
     pages: int = typer.Option(
         0, "--pages", help="Assume this page count instead of reading the PDFs"
     ),
+    year: str = typer.Option(
+        "", "--year", help="Course year it was taught in, e.g. 2026-27 (default: now)"
+    ),
 ) -> None:
     """File a reviewed staging tree into the corpus and record it in the intake.
 
@@ -377,6 +392,7 @@ def take(
     once a file is in the corpus it has a slug, extracted Markdown and
     content-addressed chunk ids that all change when it is renamed.
     """
+    taught = _academic_year(year)
     resolved = _resolve()
     staging = Path(from_dir) if from_dir else resolved.kb_root / DEFAULT_STAGING
     if not staging.is_dir() or not any(staging.rglob("*.pdf")):
@@ -388,7 +404,7 @@ def take(
         raise typer.Exit(code=1)
 
     report = take_staged(
-        resolved, staging, pages_of=(lambda _: pages) if pages else None
+        resolved, staging, pages_of=(lambda _: pages) if pages else None, year=taught
     )
 
     for named in report.taken:
@@ -404,6 +420,96 @@ def take(
     )
     if report.taken:
         typer.echo("now run `rag extract`, `rag chunk`, `rag index`, `rag push`")
+
+
+def _academic_year(year: str) -> str:
+    """The year given, checked, or the current course year."""
+    if not year:
+        return academic_year(datetime.now().astimezone().date())
+    if not is_academic_year(year):
+        # Vintages order as strings; `2026` would outrank every `2026-27`.
+        typer.secho(
+            f"{year!r} is not a course year; expected e.g. 2026-27",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    return year
+
+
+@app.command()
+def refresh(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    slug: str = typer.Argument("", help="One deck; default every one with no verdict"),
+    accept: bool = typer.Option(False, "--accept", help="Confirm a reviewed verdict"),
+    reject: bool = typer.Option(False, "--reject", help="Turn a supersession down"),
+    report: bool = typer.Option(
+        False, "--report", help="Write the diagnosis for a revised deck too"
+    ),
+    year: str = typer.Option("", "--year", help="Which course year is new"),
+) -> None:
+    """Measure whether this year's decks supersede last year's (ADR-0009).
+
+    Graded without tokens: identical text, then the vectors the index already
+    holds. A deck that changed a lot is recorded for review, with a short
+    report in `derived/refresh/` for whoever judges it.
+    """
+    resolved = _resolve()
+    if accept or reject:
+        _decide(resolved, slug, accept=accept, reject=reject)
+        return
+
+    queue = [slug] if slug else pending_decks(resolved, _academic_year(year))
+    if not queue:
+        typer.echo(f"nothing to refresh for {_academic_year(year)}")
+        return
+
+    load = functools.cache(load_encoder)
+    failed = 0
+    for name in queue:
+        try:
+            done = refresh_deck(resolved, name, load=load, report=report)
+        except NotInIntake as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+        except NotReady as exc:
+            failed += 1
+            typer.secho(f"  ! {exc}", fg=typer.colors.YELLOW)
+            continue
+        _verdict(done)
+    if failed and slug:
+        raise typer.Exit(code=1)
+
+
+def _decide(resolved: config.Paths, slug: str, *, accept: bool, reject: bool) -> None:
+    if not slug or (accept and reject):
+        typer.secho(
+            "--accept and --reject take one deck, and not both",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    decide = accept_verdict if accept else reject_verdict
+    if not decide(resolved, slug):
+        typer.secho(f"no verdict recorded for {slug}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"{slug}: {'accepted' if accept else 'rejected'}")
+
+
+def _verdict(done: Refreshed) -> None:
+    record = done.record
+    replaces = ", ".join(record.predecessors) or "nothing"
+    typer.echo(
+        f"  {record.successor}: {record.grade} (added {record.added:.2f}, "
+        f"dropped {record.dropped:.2f}) supersedes {replaces}"
+    )
+    if done.indexed:
+        typer.echo(f"    appended {done.indexed} children to the index")
+    if done.report is not None:
+        typer.echo(f"    report: {done.report}")
+    if record.decided == REVIEW:
+        typer.echo(
+            f"    read it, then `rag refresh {record.successor} --accept` or --reject"
+        )
 
 
 @app.command()

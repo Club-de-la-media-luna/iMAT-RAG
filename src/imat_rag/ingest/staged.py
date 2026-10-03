@@ -16,6 +16,9 @@ Markdown and the loss would be silent.
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 
 from imat_rag.config import Paths
@@ -23,6 +26,18 @@ from imat_rag.ingest.catalogue import Book, SourceTier
 
 INTAKE_NAME = "intake.json"
 """Where the record of taken material lives, beside the corpus and in git."""
+
+DEFAULT_YEAR = "2025-26"
+"""The vintage of an entry that names none. M9 wrote no year, and everything it
+filed is the 2025-26 material; reading absence as anything else would date
+last year's decks as this year's and let them supersede their successors."""
+
+ACADEMIC_YEAR = re.compile(r"^\d{4}-\d{2}$")
+"""`2026-27`. Vintages are compared as strings, which is only an ordering while
+every one of them has this shape: `2026` would sort after `2026-27`."""
+
+TURNOVER_MONTH = 9
+"""The course year starts in September."""
 
 TIERS = {
     "slides": SourceTier.SLIDES,
@@ -50,6 +65,22 @@ def tier_of(kind: str) -> SourceTier:
             f"{kind!r} is not a known kind; expected one of {', '.join(TIERS)}"
         )
     return TIERS[kind]
+
+
+def academic_year(day: date) -> str:
+    """The course year a day falls in: 3 October 2026 is `2026-27`."""
+    start = day.year if day.month >= TURNOVER_MONTH else day.year - 1
+    return f"{start}-{(start + 1) % 100:02d}"
+
+
+def is_academic_year(year: str) -> bool:
+    """Whether `year` has the one shape vintages can be ordered by."""
+    return bool(ACADEMIC_YEAR.match(year))
+
+
+def year_of(entry: Mapping[str, object]) -> str:
+    """The vintage an intake entry records, or the M9 drop's if it records none."""
+    return str(entry.get("year") or DEFAULT_YEAR)
 
 
 def intake_path(paths: Paths) -> Path:
